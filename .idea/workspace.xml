@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="0aee85d3-d351-4a19-b215-12b2fd7da4c2" name="Changes" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CodeInsightWorkspaceSettings">
+    <option name="optimizeImportsOnTheFly" value="true" />
+  </component>
+  <component name="ExternalProjectsData">
+    <projectState path="$PROJECT_DIR$">
+      <ProjectState />
+    </projectState>
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Class" />
+      </list>
+    </option>
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/jmpq3/264c54cfc8/2f2dd132bb6ce45a535660f99937a4559afd7c8/jmpq3-264c54cfc8-sources.jar!/systems/crigges/jmpq3/JMpqEditor.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/bin/ObjMod.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/bin/app/MapFooter.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/bin/app/MapHeader.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/bin/app/W3I.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/bin/app/WCT.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/bin/app/WTG.java" root0="SKIP_INSPECTION" />
+    <setting file="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.inwc3/wc3libs/01fb9e23bf/4f2960c51103c047c4e2995ba9982ab9f1c4d711/wc3libs-01fb9e23bf-sources.jar!/net/moonlightflower/wc3libs/port/JMpqPort.java" root0="SKIP_INSPECTION" />
+  </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
+  <component name="ProjectId" id="2ypW7ntXFFqCHJH7qrBnPROReNz" />
+  <component name="ProjectViewState">
+    <option name="autoscrollFromSource" value="true" />
+    <option name="autoscrollToSource" value="true" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "last_opened_file_path": "C:/Users/Jaccouille/Documents/Work/Java/WurstScript2",
+    "project.structure.last.edited": "Project",
+    "project.structure.proportion": "0.0",
+    "project.structure.side.proportion": "0.0",
+    "settings.editor.selected.configurable": "preferences.pluginManager"
+  }
+}]]></component>
+  <component name="RunManager" selected="Application.War3ModelImporterGUI">
+    <configuration name="TrigStrReplacer" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="org.example.TrigStrReplacer" />
+      <module name="War3AssetsImporter.main" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="org.example.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="War3ModelImporterGUI" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="org.example.War3ModelImporterGUI" />
+      <module name="War3AssetsImporter.main" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="org.example.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Application.TrigStrReplacer" />
+        <item itemvalue="Application.War3ModelImporterGUI" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="0aee85d3-d351-4a19-b215-12b2fd7da4c2" name="Changes" comment="" />
+      <created>1750531829951</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1750531829951</updated>
+    </task>
+    <servers />
+  </component>
+</project>
