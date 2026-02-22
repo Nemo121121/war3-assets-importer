@@ -60,7 +60,11 @@ public class AssetTreePanel extends JPanel {
             if (!(nodeObj instanceof JCheckBoxTreeNode node)) return;
             if (!node.isLeaf()) return;
             TreeNodeData data = (TreeNodeData) node.getUserObject();
-            if (selectionListener != null) selectionListener.onAssetSelected(data.relativePath());
+            // Strip the category prefix (e.g. "BLP Files/" or "MDX Files/")
+            String rel = data.relativePath();
+            int slash = rel.indexOf('/');
+            if (slash >= 0) rel = rel.substring(slash + 1);
+            if (selectionListener != null) selectionListener.onAssetSelected(rel);
         });
     }
 
@@ -154,6 +158,23 @@ public class AssetTreePanel extends JPanel {
         if (selectionListener != null) selectionListener.onAssetSelected(sb.toString());
     }
 
+    /**
+     * Fires {@code onAssetSelected} for the leaf node at the given tree row,
+     * used when keyboard focus moves via UP/DOWN arrow keys.
+     */
+    private void notifyFocusedRowChange(int row) {
+        TreePath tp = assetTree.getPathForRow(row);
+        if (tp == null || selectionListener == null) return;
+        Object last = tp.getLastPathComponent();
+        if (!(last instanceof JCheckBoxTreeNode node) || !node.isLeaf()) return;
+        TreeNodeData data = (TreeNodeData) node.getUserObject();
+        // Strip the category prefix (e.g. "BLP Files/" or "MDX Files/")
+        String rel = data.relativePath();
+        int slash = rel.indexOf('/');
+        if (slash >= 0) rel = rel.substring(slash + 1);
+        selectionListener.onAssetSelected(rel);
+    }
+
     // -------------------------------------------------------------------------
     // Tree building
     // -------------------------------------------------------------------------
@@ -195,11 +216,9 @@ public class AssetTreePanel extends JPanel {
         if (cbNode.isLeaf() && cbNode.isChecked()) {
             TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
             if (data.isFile() && modelsFolder != null) {
-                // Strip the leading category prefix (e.g. "MDX Files/")
+                // Strip the leading category prefix (e.g. "MDX Files/" or "BLP Files/")
                 String rel = data.relativePath();
                 int slash = rel.indexOf('/');
-                if (slash >= 0) rel = rel.substring(slash + 1);
-                slash = rel.indexOf('/');
                 if (slash >= 0) rel = rel.substring(slash + 1);
                 result.add(modelsFolder.toPath().resolve(rel).normalize());
             }
@@ -215,7 +234,27 @@ public class AssetTreePanel extends JPanel {
 
     private void setupExpandCollapseBehavior() {
         assetTree.addKeyListener(new KeyAdapter() {
-            @Override public void keyPressed(KeyEvent e) { controlDown = e.isControlDown(); }
+            @Override
+            public void keyPressed(KeyEvent e) {
+                controlDown = e.isControlDown();
+                int current = assetTree.getFocusedRow();
+                int rowCount = assetTree.getRowCount();
+                if (e.getKeyCode() == KeyEvent.VK_UP) {
+                    if (rowCount > 0) {
+                        int next = (current <= 0) ? 0 : current - 1;
+                        assetTree.setFocusedRow(next);
+                        notifyFocusedRowChange(next);
+                    }
+                    e.consume();
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    if (rowCount > 0) {
+                        int next = (current < 0) ? 0 : Math.min(current + 1, rowCount - 1);
+                        assetTree.setFocusedRow(next);
+                        notifyFocusedRowChange(next);
+                    }
+                    e.consume();
+                }
+            }
             @Override public void keyReleased(KeyEvent e) { controlDown = e.isControlDown(); }
         });
 

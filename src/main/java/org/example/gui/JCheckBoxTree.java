@@ -24,6 +24,7 @@ public class JCheckBoxTree extends JTree {
 
     protected EventListenerList listenerList = new EventListenerList();
     HashSet<TreeNode> checkedPaths = new HashSet<>();
+    private int focusedRow = -1;
 
     public JCheckBoxTree(final TreeModel treeModel) {
         super(treeModel);
@@ -50,6 +51,8 @@ public class JCheckBoxTree extends JTree {
                 if (SwingUtilities.isRightMouseButton(e)) return;
                 final TreePath tp = JCheckBoxTree.this.getPathForLocation(e.getX(), e.getY());
                 if (tp == null) return;
+                final int clickedRow = JCheckBoxTree.this.getRowForPath(tp);
+                if (clickedRow >= 0) focusedRow = clickedRow;
                 final boolean checkMode = !((JCheckBoxTreeNode) tp.getLastPathComponent()).isChecked();
                 checkSubTree(tp, checkMode);
                 updatePredecessorsWithCheckMode(tp, checkMode);
@@ -104,6 +107,14 @@ public class JCheckBoxTree extends JTree {
         JCheckBoxTreeNode node = (JCheckBoxTreeNode) getModel().getRoot();
         if (node == null) return;
         checkAllCheckedRecursively(node);
+    }
+
+    public int getFocusedRow() { return focusedRow; }
+
+    public void setFocusedRow(int row) {
+        focusedRow = row;
+        if (row >= 0) scrollRowToVisible(row);
+        repaint();
     }
 
     // -------------------------------------------------------------------------
@@ -210,7 +221,20 @@ public class JCheckBoxTree extends JTree {
             JCheckBoxTreeNode node = (JCheckBoxTreeNode) value;
             checkBox.setSelected(node.isChecked());
             checkBox.setText(node.getUserObject().toString());
-            checkBox.setOpaque(node.isChecked() && node.getChildCount() > 0 && !node.isAllChildrenSelected());
+
+            boolean isKeyFocused = row == JCheckBoxTree.this.focusedRow;
+            boolean isPartial = node.isChecked() && node.getChildCount() > 0 && !node.isAllChildrenSelected();
+
+            if (isKeyFocused) {
+                setOpaque(true);
+                setBackground(UIManager.getColor("Tree.selectionBackground"));
+                checkBox.setForeground(UIManager.getColor("Tree.selectionForeground"));
+                checkBox.setOpaque(false);
+            } else {
+                setOpaque(false);
+                checkBox.setForeground(UIManager.getColor("Tree.textForeground"));
+                checkBox.setOpaque(isPartial);
+            }
             return this;
         }
     }
