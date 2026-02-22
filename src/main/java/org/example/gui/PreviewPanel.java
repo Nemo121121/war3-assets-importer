@@ -22,10 +22,19 @@ import java.util.List;
  * <p>Grid thumbnails are loaded asynchronously via a {@link SwingWorker} so the EDT
  * is never blocked.  Switching view (single ↔ grid) cancels any in-flight load.
  *
- * <p>The grid wraps automatically because {@link ScrollableFlowPanel} implements
- * {@link Scrollable} with {@code getScrollableTracksViewportWidth() = true}, which
- * instructs the {@link JScrollPane} to constrain the panel's width to the viewport
- * width — forcing {@link FlowLayout} to wrap items onto multiple rows.
+ * <h3>Why the grid wraps correctly</h3>
+ * <p>{@link FlowLayout#preferredLayoutSize} always returns the single-row size — it
+ * never accounts for wrapping.  If we rely on it, the {@link JScrollPane} is told the
+ * content is only one row tall and never enables vertical scrolling.
+ * <p>The fix is {@link ScrollableFlowPanel}:
+ * <ol>
+ *   <li>{@code getScrollableTracksViewportWidth() = true} tells the scroll pane to
+ *       force the panel's width to the viewport width, so {@link FlowLayout#layoutContainer}
+ *       (which uses the component's actual width) wraps items visually.</li>
+ *   <li>A custom {@code getPreferredSize()} simulates the same wrapping arithmetic and
+ *       returns the correct multi-row height, so the scroll pane knows content is taller
+ *       than the viewport and activates the vertical scrollbar.</li>
+ * </ol>
  */
 public class PreviewPanel extends JPanel {
 
@@ -37,6 +46,7 @@ public class PreviewPanel extends JPanel {
     private final JPanel singleContainer;
 
     // ---- Grid mode ----
+    // Non-static inner class so it can read scrollPane.getViewport().getWidth()
     private final ScrollableFlowPanel gridPanel = new ScrollableFlowPanel();
 
     // ---- Shared scroll pane (always present) ----
@@ -213,15 +223,65 @@ public class PreviewPanel extends JPanel {
     /**
      * A {@link JPanel} with {@link FlowLayout} that implements {@link Scrollable}.
      *
-     * <p>{@code getScrollableTracksViewportWidth() = true} is the key: it tells
-     * {@link JScrollPane} to set this panel's width equal to the viewport width,
-     * which forces {@link FlowLayout} to wrap items onto multiple rows instead of
-     * extending into a single long horizontal row.
+     * <p>Two things work together to give a proper wrapping grid inside a
+     * {@link JScrollPane}:
+     * <ul>
+     *   <li>{@code getScrollableTracksViewportWidth() = true} — scroll pane sets this
+     *       panel's width to the viewport width, so {@link FlowLayout#layoutContainer}
+     *       wraps items visually at the right boundary.</li>
+     *   <li>{@code getPreferredSize()} simulates the same wrapping and returns the
+     *       correct total height — without this, {@link FlowLayout#preferredLayoutSize}
+     *       would report a single-row height and the scroll pane would never scroll.</li>
+     * </ul>
+     *
+     * <p>Non-static inner class so it can read the viewport width from the outer
+     * {@link PreviewPanel#scrollPane}.
      */
-    private static class ScrollableFlowPanel extends JPanel implements Scrollable {
+    private class ScrollableFlowPanel extends JPanel implements Scrollable {
 
         ScrollableFlowPanel() {
             super(new FlowLayout(FlowLayout.LEFT, 6, 6));
+        }
+
+        /**
+         * Returns the correctly wrapped preferred size.
+         * Width is the current viewport width; height is computed by simulating
+         * the same row-breaking logic that {@link FlowLayout#layoutContainer} uses.
+         */
+        @Override
+        public Dimension getPreferredSize() {
+            int viewportWidth = scrollPane.getViewport().getWidth();
+            if (viewportWidth <= 0) {
+                // Viewport not yet laid out — fall back to default (single-row estimate)
+                return super.getPreferredSize();
+            }
+            return new Dimension(viewportWidth, computeWrappedHeight(viewportWidth));
+        }
+
+        /** Simulates FlowLayout row-breaking to find the total height needed. */
+        private int computeWrappedHeight(int availableWidth) {
+            FlowLayout fl = (FlowLayout) getLayout();
+            int hgap = fl.getHgap();
+            int vgap = fl.getVgap();
+
+            int x = hgap;
+            int totalHeight = vgap;
+            int rowHeight = 0;
+
+            for (Component c : getComponents()) {
+                if (!c.isVisible()) continue;
+                Dimension d = c.getPreferredSize();
+                if (x + d.width + hgap > availableWidth && x > hgap) {
+                    // Start a new row
+                    totalHeight += rowHeight + vgap;
+                    x = hgap;
+                    rowHeight = 0;
+                }
+                x += d.width + hgap;
+                rowHeight = Math.max(rowHeight, d.height);
+            }
+            totalHeight += rowHeight + vgap; // last row
+            return totalHeight;
         }
 
         @Override
@@ -231,7 +291,7 @@ public class PreviewPanel extends JPanel {
 
         @Override
         public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return THUMB_SIZE + 30;
+            return THUMB_SIZE + 30; // one thumbnail row
         }
 
         @Override
@@ -239,13 +299,13 @@ public class PreviewPanel extends JPanel {
             return (THUMB_SIZE + 30) * 2;
         }
 
-        /** Tracks viewport width → FlowLayout wraps at the right boundary. */
+        /** Forces panel width == viewport width so FlowLayout wraps at the right boundary. */
         @Override
         public boolean getScrollableTracksViewportWidth() {
             return true;
         }
 
-        /** Does NOT track viewport height → panel height grows with content, enabling vertical scroll. */
+        /** Allows panel height to grow beyond the viewport, enabling vertical scrolling. */
         @Override
         public boolean getScrollableTracksViewportHeight() {
             return false;
