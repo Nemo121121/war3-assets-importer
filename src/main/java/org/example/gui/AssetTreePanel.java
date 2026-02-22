@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,9 +30,15 @@ import java.util.Set;
  */
 public class AssetTreePanel extends JPanel {
 
-    /** Callback fired when the user clicks a leaf node (file) in the tree. */
+    /** Callback fired when the user focuses a leaf node (file) in the tree. */
     public interface AssetSelectionListener {
         void onAssetSelected(String relativePath);
+    }
+
+    /** Callback fired when the user focuses a folder node in the tree. */
+    public interface FolderSelectionListener {
+        /** @param blpRelativePaths relative paths of BLP files under the folder (stripped of category prefix). */
+        void onFolderSelected(List<String> blpRelativePaths);
     }
 
     private final JCheckBoxTree assetTree;
@@ -40,6 +47,7 @@ public class AssetTreePanel extends JPanel {
     private boolean isTreeUpdating = false;
     private File modelsFolder;
     private AssetSelectionListener selectionListener;
+    private FolderSelectionListener folderListener;
 
     public AssetTreePanel() {
         setLayout(new java.awt.BorderLayout());
@@ -58,13 +66,16 @@ public class AssetTreePanel extends JPanel {
         assetTree.addCheckChangeEventListener(evt -> {
             Object nodeObj = evt.getSource();
             if (!(nodeObj instanceof JCheckBoxTreeNode node)) return;
-            if (!node.isLeaf()) return;
-            TreeNodeData data = (TreeNodeData) node.getUserObject();
-            // Strip the category prefix (e.g. "BLP Files/" or "MDX Files/")
-            String rel = data.relativePath();
-            int slash = rel.indexOf('/');
-            if (slash >= 0) rel = rel.substring(slash + 1);
-            if (selectionListener != null) selectionListener.onAssetSelected(rel);
+            if (node.isLeaf()) {
+                TreeNodeData data = (TreeNodeData) node.getUserObject();
+                // Strip the category prefix (e.g. "BLP Files/" or "MDX Files/")
+                String rel = data.relativePath();
+                int slash = rel.indexOf('/');
+                if (slash >= 0) rel = rel.substring(slash + 1);
+                if (selectionListener != null) selectionListener.onAssetSelected(rel);
+            } else {
+                if (folderListener != null) folderListener.onFolderSelected(collectBlpPathsUnder(node));
+            }
         });
     }
 
@@ -74,6 +85,10 @@ public class AssetTreePanel extends JPanel {
 
     public void setAssetSelectionListener(AssetSelectionListener listener) {
         this.selectionListener = listener;
+    }
+
+    public void setFolderSelectionListener(FolderSelectionListener listener) {
+        this.folderListener = listener;
     }
 
     public void setModelsFolder(File folder) {
@@ -159,20 +174,28 @@ public class AssetTreePanel extends JPanel {
     }
 
     /**
-     * Fires {@code onAssetSelected} for the leaf node at the given tree row,
+     * Fires the appropriate selection callback for the node at the given tree row,
      * used when keyboard focus moves via UP/DOWN arrow keys.
+     * <ul>
+     *   <li>Leaf nodes → {@link AssetSelectionListener#onAssetSelected}</li>
+     *   <li>Folder nodes → {@link FolderSelectionListener#onFolderSelected} with all BLP files under it</li>
+     * </ul>
      */
     private void notifyFocusedRowChange(int row) {
         TreePath tp = assetTree.getPathForRow(row);
-        if (tp == null || selectionListener == null) return;
+        if (tp == null) return;
         Object last = tp.getLastPathComponent();
-        if (!(last instanceof JCheckBoxTreeNode node) || !node.isLeaf()) return;
-        TreeNodeData data = (TreeNodeData) node.getUserObject();
-        // Strip the category prefix (e.g. "BLP Files/" or "MDX Files/")
-        String rel = data.relativePath();
-        int slash = rel.indexOf('/');
-        if (slash >= 0) rel = rel.substring(slash + 1);
-        selectionListener.onAssetSelected(rel);
+        if (!(last instanceof JCheckBoxTreeNode node)) return;
+        if (node.isLeaf()) {
+            if (selectionListener == null) return;
+            TreeNodeData data = (TreeNodeData) node.getUserObject();
+            String rel = data.relativePath();
+            int slash = rel.indexOf('/');
+            if (slash >= 0) rel = rel.substring(slash + 1);
+            selectionListener.onAssetSelected(rel);
+        } else {
+            if (folderListener != null) folderListener.onFolderSelected(collectBlpPathsUnder(node));
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -289,6 +312,37 @@ public class AssetTreePanel extends JPanel {
         }
         if (expand) assetTree.expandPath(path);
         else assetTree.collapsePath(path);
+    }
+
+    /**
+     * Collects the relative paths (category prefix already stripped) of all
+     * BLP leaf files that are descendants of {@code node}.
+     */
+    private List<String> collectBlpPathsUnder(JCheckBoxTreeNode node) {
+        List<String> result = new ArrayList<>();
+        collectBlpPathsRecursive(node, result);
+        return result;
+    }
+
+    private void collectBlpPathsRecursive(JCheckBoxTreeNode node, List<String> result) {
+        if (node.isLeaf()) {
+            TreeNodeData data = (TreeNodeData) node.getUserObject();
+            if (data.isFile()) {
+                String rel = data.relativePath();
+                int slash = rel.indexOf('/');
+                if (slash >= 0) rel = rel.substring(slash + 1);
+                if (rel.toLowerCase().endsWith(".blp")) {
+                    result.add(rel);
+                }
+            }
+            return;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            Object child = node.getChildAt(i);
+            if (child instanceof JCheckBoxTreeNode cb) {
+                collectBlpPathsRecursive(cb, result);
+            }
+        }
     }
 
     // -------------------------------------------------------------------------

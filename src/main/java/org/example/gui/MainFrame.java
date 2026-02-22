@@ -18,8 +18,10 @@ import java.awt.event.ActionEvent;
 import java.io.File;
 import java.nio.file.Path;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -100,6 +102,7 @@ public class MainFrame {
         previewPanel = new PreviewPanel();
 
         assetTreePanel.setAssetSelectionListener(this::onAssetSelected);
+        assetTreePanel.setFolderSelectionListener(this::onFolderSelected);
 
         JSplitPane assetPreviewPane = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT, assetTreePanel, previewPanel);
@@ -264,6 +267,16 @@ public class MainFrame {
         if (asset.exists() && asset.isFile()) {
             previewPanel.setImage(asset);
         }
+    }
+
+    private void onFolderSelected(List<String> blpRelativePaths) {
+        if (modelsFolder == null) return;
+        List<File> files = new ArrayList<>(blpRelativePaths.size());
+        for (String rel : blpRelativePaths) {
+            File f = new File(modelsFolder, rel);
+            if (f.exists()) files.add(f);
+        }
+        previewPanel.setImages(files);
     }
 
     // -------------------------------------------------------------------------
