@@ -21,6 +21,11 @@ import java.util.List;
  *
  * <p>Grid thumbnails are loaded asynchronously via a {@link SwingWorker} so the EDT
  * is never blocked.  Switching view (single ↔ grid) cancels any in-flight load.
+ *
+ * <p>The grid wraps automatically because {@link ScrollableFlowPanel} implements
+ * {@link Scrollable} with {@code getScrollableTracksViewportWidth() = true}, which
+ * instructs the {@link JScrollPane} to constrain the panel's width to the viewport
+ * width — forcing {@link FlowLayout} to wrap items onto multiple rows.
  */
 public class PreviewPanel extends JPanel {
 
@@ -28,14 +33,11 @@ public class PreviewPanel extends JPanel {
     private static final int THUMB_SIZE   = 96;
 
     // ---- Single-image mode ----
-    private final JLabel  singleLabel     = new JLabel();
-    private final JPanel  singleContainer;
+    private final JLabel singleLabel     = new JLabel();
+    private final JPanel singleContainer;
 
     // ---- Grid mode ----
-    // FlowLayout placed in BorderLayout.NORTH of a wrapper so it wraps at the
-    // viewport width and allows the scroll pane to provide vertical scrolling.
-    private final JPanel  gridPanel   = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
-    private final JPanel  gridWrapper = new JPanel(new BorderLayout());
+    private final ScrollableFlowPanel gridPanel = new ScrollableFlowPanel();
 
     // ---- Shared scroll pane (always present) ----
     private final JScrollPane scrollPane;
@@ -51,9 +53,6 @@ public class PreviewPanel extends JPanel {
         singleLabel.setVerticalAlignment(SwingConstants.CENTER);
         singleContainer = new JPanel(new GridBagLayout());
         singleContainer.add(singleLabel);
-
-        // Grid: flow panel constrained to viewport width by BorderLayout.NORTH
-        gridWrapper.add(gridPanel, BorderLayout.NORTH);
 
         // Start in single-image mode
         scrollPane = new JScrollPane(singleContainer);
@@ -113,7 +112,7 @@ public class PreviewPanel extends JPanel {
     public void setImages(List<File> files) {
         cancelThumbLoader();
         gridPanel.removeAll();
-        switchTo(gridWrapper);
+        switchTo(gridPanel);
 
         if (files.isEmpty()) {
             gridPanel.revalidate();
@@ -204,12 +203,54 @@ public class PreviewPanel extends JPanel {
     }
 
     private static String truncate(String text, int maxLen) {
-        return text.length() <= maxLen ? text : text.substring(0, maxLen - 1) + "…";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen - 1) + "\u2026";
     }
 
     // -------------------------------------------------------------------------
-    // Inner record
+    // Inner types
     // -------------------------------------------------------------------------
+
+    /**
+     * A {@link JPanel} with {@link FlowLayout} that implements {@link Scrollable}.
+     *
+     * <p>{@code getScrollableTracksViewportWidth() = true} is the key: it tells
+     * {@link JScrollPane} to set this panel's width equal to the viewport width,
+     * which forces {@link FlowLayout} to wrap items onto multiple rows instead of
+     * extending into a single long horizontal row.
+     */
+    private static class ScrollableFlowPanel extends JPanel implements Scrollable {
+
+        ScrollableFlowPanel() {
+            super(new FlowLayout(FlowLayout.LEFT, 6, 6));
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return THUMB_SIZE + 30;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return (THUMB_SIZE + 30) * 2;
+        }
+
+        /** Tracks viewport width → FlowLayout wraps at the right boundary. */
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        /** Does NOT track viewport height → panel height grows with content, enabling vertical scroll. */
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
+    }
 
     private record ThumbResult(JLabel label, ImageIcon icon) {}
 }
