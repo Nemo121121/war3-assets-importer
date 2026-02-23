@@ -234,13 +234,13 @@ public class PreviewPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     /**
-     * Opens a small dialog showing metadata for {@code file}:
-     * filename, file size, pixel dimensions, and mipmap count.
-     * Uses the registered BLP {@link ImageReader} when available.
+     * Opens a dialog showing the BLP image at its natural pixel dimensions together
+     * with file/format metadata (size on disk, dimensions, mipmap levels, format name).
      */
     private void showBlpInfoDialog(File file) {
+        // ---- collect metadata + read pixels in one pass ----
         JPanel infoPanel = new JPanel(new GridBagLayout());
-        infoPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        infoPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
 
         GridBagConstraints lc = new GridBagConstraints();
         lc.gridx = 0; lc.anchor = GridBagConstraints.NORTHWEST;
@@ -251,15 +251,15 @@ public class PreviewPanel extends JPanel {
         vc.insets = new Insets(2, 0, 2, 4);
 
         int[] row = {0};
+        addInfoRow(infoPanel, lc, vc, row[0]++, "File:",         file.getName());
+        addInfoRow(infoPanel, lc, vc, row[0]++, "Size on disk:", formatFileSize(file.length()));
 
-        addInfoRow(infoPanel, lc, vc, row[0]++, "File:",          file.getName());
-        addInfoRow(infoPanel, lc, vc, row[0]++, "Size on disk:",  formatFileSize(file.length()));
-
-        // Separator
         GridBagConstraints sep = new GridBagConstraints();
         sep.gridx = 0; sep.gridy = row[0]++; sep.gridwidth = 2;
         sep.fill = GridBagConstraints.HORIZONTAL; sep.insets = new Insets(4, 0, 4, 0);
         infoPanel.add(new JSeparator(), sep);
+
+        BufferedImage[] imgRef = {null};
 
         try {
             Iterator<ImageReader> readers = ImageIO.getImageReadersBySuffix("blp");
@@ -271,26 +271,28 @@ public class PreviewPanel extends JPanel {
 
                     int w = reader.getWidth(0);
                     int h = reader.getHeight(0);
-                    addInfoRow(infoPanel, lc, vc, row[0]++, "Dimensions:", w + " × " + h + " px");
+                    addInfoRow(infoPanel, lc, vc, row[0]++, "Dimensions:", w + " x " + h + " px");
 
                     try {
                         int mipmaps = reader.getNumImages(true);
                         addInfoRow(infoPanel, lc, vc, row[0]++, "Mipmap levels:", String.valueOf(mipmaps));
-                    } catch (IOException ex) {
+                    } catch (IOException ignored) {
                         addInfoRow(infoPanel, lc, vc, row[0]++, "Mipmap levels:", "N/A");
                     }
 
-                    addInfoRow(infoPanel, lc, vc, row[0]++, "Format:",
-                            reader.getFormatName() != null ? reader.getFormatName() : "BLP");
+                    String fmt = reader.getFormatName();
+                    if (fmt != null) addInfoRow(infoPanel, lc, vc, row[0]++, "Format:", fmt);
+
+                    // Read actual pixels for the image preview
+                    try { imgRef[0] = reader.read(0); } catch (Exception ignored) {}
                 } finally {
                     reader.dispose();
                 }
             } else {
-                // BLP reader not registered — fall back to plain ImageIO
-                BufferedImage img = ImageIO.read(file);
-                if (img != null) {
+                imgRef[0] = ImageIO.read(file);
+                if (imgRef[0] != null) {
                     addInfoRow(infoPanel, lc, vc, row[0]++, "Dimensions:",
-                            img.getWidth() + " × " + img.getHeight() + " px");
+                            imgRef[0].getWidth() + " x " + imgRef[0].getHeight() + " px");
                 }
                 addInfoRow(infoPanel, lc, vc, row[0]++, "Note:", "BLP reader not available");
             }
@@ -298,10 +300,31 @@ public class PreviewPanel extends JPanel {
             addInfoRow(infoPanel, lc, vc, row[0]++, "Error:", ex.getMessage());
         }
 
+        // ---- assemble dialog: image on top (natural size), metadata below ----
+        JPanel content = new JPanel(new BorderLayout(0, 6));
+        content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+        if (imgRef[0] != null) {
+            BufferedImage img = imgRef[0];
+            JLabel imgLabel = new JLabel(new ImageIcon(img));
+            imgLabel.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+            JScrollPane imgScroll = new JScrollPane(imgLabel,
+                    JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+            imgScroll.setBorder(null);
+            // Show image at 1:1 pixel ratio; cap the viewport at 512 x 512
+            imgScroll.setPreferredSize(new Dimension(
+                    Math.min(img.getWidth()  + 4, 512),
+                    Math.min(img.getHeight() + 4, 512)));
+            content.add(imgScroll, BorderLayout.CENTER);
+        }
+
+        content.add(infoPanel, BorderLayout.SOUTH);
+
         JOptionPane.showMessageDialog(
                 SwingUtilities.getWindowAncestor(this),
-                infoPanel,
-                "BLP Image Info — " + file.getName(),
+                content,
+                "BLP Info - " + file.getName(),
                 JOptionPane.INFORMATION_MESSAGE);
     }
 

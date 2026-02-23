@@ -189,6 +189,13 @@ public class MainFrame {
 
         try {
             MapMetadata meta = metadataService.loadMetadata(mapFile);
+
+            // Warn (but don't abort) when metadata was only partially read,
+            // e.g. a Reforged map with an unsupported W3I format version.
+            if (meta.loadWarning() != null) {
+                log("Warning: " + meta.loadWarning());
+            }
+
             optionsPanel.setMapName(meta.name());
             optionsPanel.setDescription(meta.description());
             optionsPanel.setAuthor(meta.author());
@@ -205,8 +212,11 @@ public class MainFrame {
                 } catch (Exception ignored) {}
             }
 
-            log("Top left: " + meta.cameraBounds().getTopLeft());
-            log("Bottom right: " + meta.cameraBounds().getBottomRight());
+            // Only log camera bounds when the W3I was fully parsed
+            if (meta.loadWarning() == null) {
+                log("Top left: " + meta.cameraBounds().getTopLeft());
+                log("Bottom right: " + meta.cameraBounds().getBottomRight());
+            }
         } catch (Exception ex) {
             log(MessageFormat.format(Messages.get("log.errorLoadingMap"), ex.getMessage()));
         }

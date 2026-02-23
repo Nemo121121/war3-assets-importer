@@ -36,3 +36,9 @@ dependencies {
 test {
     useJUnitPlatform()
 }
+
+// Ensure source files are compiled as UTF-8 on all platforms (avoids garbled
+// characters when building on a Windows system whose default charset is not UTF-8)
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

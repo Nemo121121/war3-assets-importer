@@ -23,23 +23,50 @@ public class MapMetadataService {
     /**
      * Opens the map MPQ, extracts W3I + WTS files, and returns a {@link MapMetadata} record.
      *
+     * <p>The preview image is always extracted when present.  If the W3I cannot be parsed
+     * (e.g. a Reforged map with an unsupported format version), the method still returns a
+     * valid {@link MapMetadata} whose {@link MapMetadata#loadWarning()} is non-null rather
+     * than propagating the exception, so the UI can display the preview and allow the user
+     * to proceed with the import.
+     *
      * @param mapFile the .w3x or .w3m map file
-     * @return parsed map metadata
-     * @throws Exception if the MPQ cannot be read or required files are missing
+     * @return parsed (or partially parsed) map metadata — never {@code null}
+     * @throws Exception only if the MPQ archive itself cannot be opened
      */
     public MapMetadata loadMetadata(File mapFile) throws Exception {
         try (JMpqEditor mpqEditor = new JMpqEditor(mapFile, MPQOpenOption.FORCE_V0)) {
-            W3I w3i = new W3I(mpqEditor.extractFileAsBytes("war3map.w3i"));
-            WTS wts = new WTS(new ByteArrayInputStream(mpqEditor.extractFileAsBytes("war3map.wts")));
 
-            Map<String, String> namedEntries = wts.getNamedEntries();
-
+            // --- Step 1: preview image (independent of W3I format) ---
             byte[] previewBytes = null;
             if (mpqEditor.hasFile("war3mapMap.blp")) {
                 previewBytes = mpqEditor.extractFileAsBytes("war3mapMap.blp");
             }
 
-            String gameVersion = StringUtils.buildGameVersionInfo(w3i);
+            // --- Step 2: W3I (may fail for Reforged / unknown format versions) ---
+            W3I w3i;
+            try {
+                w3i = new W3I(mpqEditor.extractFileAsBytes("war3map.w3i"));
+            } catch (Exception e) {
+                // Return partial metadata so the UI still shows the preview and
+                // the map file remains selectable for processing.
+                return new MapMetadata("", "", "", "", "",
+                        previewBytes, CameraBounds.getInstance(),
+                        "W3I metadata not available (" + e.getMessage() + ")");
+            }
+
+            // --- Step 3: WTS (optional — some maps have no localised strings) ---
+            Map<String, String> namedEntries = Map.of();
+            if (mpqEditor.hasFile("war3map.wts")) {
+                try {
+                    WTS wts = new WTS(new ByteArrayInputStream(
+                            mpqEditor.extractFileAsBytes("war3map.wts")));
+                    namedEntries = wts.getNamedEntries();
+                } catch (Exception ignored) {
+                    // WTS parse failure is non-fatal; raw strings will be used
+                }
+            }
+
+            String gameVersion  = StringUtils.buildGameVersionInfo(w3i);
             String editorVersion = String.valueOf(w3i.getEditorVersion());
             String name   = resolveTrigStr(w3i.getMapName(),        namedEntries, "<unknown>");
             String author = resolveTrigStr(w3i.getMapAuthor(),      namedEntries, "<unknown>");
