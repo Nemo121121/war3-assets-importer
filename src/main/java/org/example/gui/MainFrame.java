@@ -259,12 +259,12 @@ public class MainFrame {
         }
 
         ImportOptions opts = new ImportOptions(
-                optionsPanel.isCreateUnitsSelected(),
-                optionsPanel.isPlaceUnitsSelected(),
-                optionsPanel.isClearUnitsSelected(),
-                optionsPanel.isClearAssetsSelected(),
-                optionsPanel.getSelectedUnitDefinition() != null
-                        ? optionsPanel.getSelectedUnitDefinition() : "hfoo"
+                importConfigPanel.isCreateUnitsSelected(),
+                importConfigPanel.isPlaceUnitsSelected(),
+                importConfigPanel.isClearUnitsSelected(),
+                importConfigPanel.isClearAssetsSelected(),
+                importConfigPanel.getSelectedUnitDefinition() != null
+                        ? importConfigPanel.getSelectedUnitDefinition() : "hfoo"
         );
 
         // Run on background thread via SwingWorker wrapper

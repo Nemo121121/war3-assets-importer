@@ -23,22 +23,13 @@ public class MapOptionsPanel extends JPanel {
     private final JTextField mapVersionField = new JTextField();
     private final JTextField editorVersionField = new JTextField();
 
-    // ---- Processing option checkboxes ----
-    private final JCheckBox createUnitsBox = new JCheckBox();
-    private final JCheckBox placeUnitsBox = new JCheckBox();
-    private final JCheckBox clearUnitsBox = new JCheckBox();
-    private final JCheckBox clearAssetsBox = new JCheckBox();
-
-    // ---- Unit definition dropdown ----
-    private final JComboBox<String> unitDefinitionSelect = new JComboBox<>();
-
     // ---- Preview image ----
     private final JLabel imageLabel = new JLabel();
     private static final int PREVIEW_SIZE = 128;
     private ImageIcon currentImage;
 
     // ---- Label references for i18n refresh ----
-    private JLabel nameLabel, authorLabel, gameVersionLabel, editorVersionLabel, descLabel, unitDefLabel;
+    private JLabel nameLabel, authorLabel, gameVersionLabel, editorVersionLabel, descLabel;
 
     public MapOptionsPanel() {
         setLayout(new BorderLayout());
@@ -46,9 +37,6 @@ public class MapOptionsPanel extends JPanel {
         imageLabel.setIcon(generateFallbackImage());
 
         buildLayout();
-        applyCheckboxLabels();
-
-        createUnitsBox.addActionListener(e -> unitDefinitionSelect.setVisible(createUnitsBox.isSelected()));
     }
 
     // -------------------------------------------------------------------------
@@ -61,7 +49,6 @@ public class MapOptionsPanel extends JPanel {
         gameVersionLabel = new JLabel(Messages.get("label.gameVersion"));
         editorVersionLabel = new JLabel(Messages.get("label.editorVersion"));
         descLabel = new JLabel(Messages.get("label.description"));
-        unitDefLabel = new JLabel(Messages.get("label.unitDefinition"));
 
         JPanel labelPanel = new JPanel();
         labelPanel.setLayout(new BoxLayout(labelPanel, BoxLayout.Y_AXIS));
@@ -81,21 +68,9 @@ public class MapOptionsPanel extends JPanel {
         headerPanel.add(labelPanel, BorderLayout.CENTER);
         headerPanel.add(imageLabel, BorderLayout.EAST);
 
-        JPanel checkboxGrid = new JPanel(new GridLayout(0, 2, 10, 5));
-        checkboxGrid.add(createUnitsBox);
-        checkboxGrid.add(placeUnitsBox);
-        checkboxGrid.add(clearUnitsBox);
-        checkboxGrid.add(clearAssetsBox);
-
         JPanel formPanel = new JPanel();
         formPanel.setLayout(new BoxLayout(formPanel, BoxLayout.Y_AXIS));
         formPanel.add(headerPanel);
-        formPanel.add(Box.createVerticalStrut(10));
-        formPanel.add(checkboxGrid);
-        formPanel.add(Box.createVerticalStrut(10));
-        formPanel.add(unitDefLabel);
-        formPanel.add(unitDefinitionSelect);
-        unitDefinitionSelect.setVisible(false);
         formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         add(formPanel, BorderLayout.CENTER);
@@ -112,16 +87,7 @@ public class MapOptionsPanel extends JPanel {
         gameVersionLabel.setText(Messages.get("label.gameVersion"));
         editorVersionLabel.setText(Messages.get("label.editorVersion"));
         descLabel.setText(Messages.get("label.description"));
-        unitDefLabel.setText(Messages.get("label.unitDefinition"));
-        applyCheckboxLabels();
         repaint();
-    }
-
-    private void applyCheckboxLabels() {
-        createUnitsBox.setText(Messages.get("checkbox.createUnits"));
-        placeUnitsBox.setText(Messages.get("checkbox.placeUnits"));
-        clearUnitsBox.setText(Messages.get("checkbox.clearUnits"));
-        clearAssetsBox.setText(Messages.get("checkbox.clearAssets"));
     }
 
     // -------------------------------------------------------------------------
@@ -133,21 +99,6 @@ public class MapOptionsPanel extends JPanel {
     public void setAuthor(String author)      { authorField.setText(author); }
     public void setMapVersion(String version) { mapVersionField.setText(version); }
     public void setEditorVersion(String v)    { editorVersionField.setText(v); }
-
-    public void setUnitDefinitions(List<String> unitNames) {
-        unitDefinitionSelect.removeAllItems();
-        for (String name : unitNames) unitDefinitionSelect.addItem(name);
-    }
-
-    // -------------------------------------------------------------------------
-    // Option accessors
-    // -------------------------------------------------------------------------
-
-    public boolean isCreateUnitsSelected()  { return createUnitsBox.isSelected(); }
-    public boolean isPlaceUnitsSelected()   { return placeUnitsBox.isSelected(); }
-    public boolean isClearUnitsSelected()   { return clearUnitsBox.isSelected(); }
-    public boolean isClearAssetsSelected()  { return clearAssetsBox.isSelected(); }
-    public String  getSelectedUnitDefinition() { return (String) unitDefinitionSelect.getSelectedItem(); }
 
     // -------------------------------------------------------------------------
     // Preview image
