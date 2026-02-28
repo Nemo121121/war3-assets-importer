@@ -27,10 +27,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -169,6 +166,10 @@ public class ImportService {
             }
         }
 
+        Set<String> existingImpPaths = importFile.getObjs().stream()
+                .map(IMP.Obj::getPath)
+                .collect(Collectors.toCollection(HashSet::new));
+
         W3U w3u = mpq.hasFile("war3map.w3u")
                 ? new W3U(new Wc3BinInputStream(new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3u"))))
                 : new W3U();
@@ -177,6 +178,19 @@ public class ImportService {
                 .map(W3U.Obj::getId)
                 .map(ObjId::toString)
                 .collect(Collectors.toSet());
+
+        Set<String> existingModelPaths = w3u.getObjsList().stream()
+                .map(obj -> {
+                    try {
+                        // Check if the field exists to avoid exceptions for non-unit objects
+                        Object val = obj.get(MetaFieldId.valueOf("umdl"));
+                        return val != null ? val.toString() : null;
+                    } catch (Exception ignored) {
+                        return null;
+                    }
+                })
+                .filter(s -> s != null)
+                .collect(Collectors.toCollection(HashSet::new));
 
         String baseUnitId = options.getUnitOriginId() != null ? options.getUnitOriginId() : "hfoo";
 
@@ -217,7 +231,6 @@ public class ImportService {
                 percentCallback.accept(Math.min(pct, 99)); // 100 is reserved for full success
             }
 
-            IMP.Obj importObj = new IMP.Obj();
             String insertedFilePath = filePath.toString();
 
             if (insertedTextures.containsKey(f.getName())) {
@@ -230,47 +243,60 @@ public class ImportService {
                 insertedFilePath = f.getName();
             }
 
-            importObj.setPath(insertedFilePath);
-            importObj.setStdFlag(IMP.StdFlag.CUSTOM);
-            importFile.addObj(importObj);
+            if (!existingImpPaths.contains(insertedFilePath)) {
+                IMP.Obj importObj = new IMP.Obj();
+                importObj.setPath(insertedFilePath);
+                importObj.setStdFlag(IMP.StdFlag.CUSTOM);
+                importFile.addObj(importObj);
+                existingImpPaths.add(insertedFilePath);
+            } else {
+                log.accept("Import entry already exists, skipping IMP: " + insertedFilePath);
+            }
+
             mpq.deleteFile(insertedFilePath);
             mpq.insertFile(insertedFilePath, f, false);
             insertedTextures.put(f.getName(), f);
 
             // MDX files get a unit definition and a placed instance
             if (f.getName().toLowerCase().endsWith(".mdx") && options.getCreateUnits()) {
-                String idString = UnitIDGenerator.generateNextId(existingIds);
-                existingIds.add(idString);
-                ObjId newId = ObjId.valueOf(idString);
-                log.accept("Adding unit with ID: " + newId);
-
-                ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(baseUnitId));
-                unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling())); // where unit scaling is a double, e.g 1.0
-                unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(filePath.toString()));
-
-                // Format the unit name
-                String unitName;
-                if (options.getAutoNameUnits()) {
-                    String baseFilename = f.getName().replaceAll("(?i)\\.mdx$", "");
-                    unitName = NameFormatter.format(baseFilename, options.getNameFormat());
-                    log.accept("Formatted unit name: " + baseFilename + " -> " + unitName);
+                String modelPath = filePath.toString();
+                if (existingModelPaths.contains(modelPath)) {
+                    log.accept("Unit already defined for model: " + modelPath + ", skipping.");
                 } else {
-                    unitName = f.getName().replaceAll("(?i)\\.mdx$", "");
-                }
-                unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                    String idString = UnitIDGenerator.generateNextId(existingIds);
+                    existingIds.add(idString);
+                    ObjId newId = ObjId.valueOf(idString);
+                    log.accept("Adding unit with ID: " + newId);
 
-                if (options.getPlaceUnits() && placer != null && !dooUnitsParseFailed) {
-                    Coords2DF coords = placer.nextPosition();
-                    if (coords != null) {
-                        DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
-                        dooUnitObj.setTypeId(newId);
-                        dooUnitObj.setSkinId(newId);
-                        dooUnitObj.setPos(new Coords3DF(coords.getX().getVal(), coords.getY().getVal(), 0));
-                        dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
-                        dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
-                        dooUnitObj.setLifePerc(-1);  // -1 = use unit's default max health
-                        dooUnitObj.setManaPerc(-1);  // -1 = use unit's default max mana
-                        log.accept("Placed unit at: " + coords.getX().getVal() + ", " + coords.getY().getVal());
+                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(baseUnitId));
+                    unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling())); // where unit scaling is a double, e.g 1.0
+                    unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+
+                    // Format the unit name
+                    String unitName;
+                    if (options.getAutoNameUnits()) {
+                        String baseFilename = f.getName().replaceAll("(?i)\\.mdx$", "");
+                        unitName = NameFormatter.format(baseFilename, options.getNameFormat());
+                        log.accept("Formatted unit name: " + baseFilename + " -> " + unitName);
+                    } else {
+                        unitName = f.getName().replaceAll("(?i)\\.mdx$", "");
+                    }
+                    unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                    existingModelPaths.add(modelPath);
+
+                    if (options.getPlaceUnits() && placer != null && !dooUnitsParseFailed) {
+                        Coords2DF coords = placer.nextPosition();
+                        if (coords != null) {
+                            DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
+                            dooUnitObj.setTypeId(newId);
+                            dooUnitObj.setSkinId(newId);
+                            dooUnitObj.setPos(new Coords3DF(coords.getX().getVal(), coords.getY().getVal(), 0));
+                            dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                            dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
+                            dooUnitObj.setLifePerc(-1);  // -1 = use unit's default max health
+                            dooUnitObj.setManaPerc(-1);  // -1 = use unit's default max mana
+                            log.accept("Placed unit at: " + coords.getX().getVal() + ", " + coords.getY().getVal());
+                        }
                     }
                 }
             }
