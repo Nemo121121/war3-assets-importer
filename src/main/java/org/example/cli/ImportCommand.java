@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.logging.Logger;
 
 /**
  * CLI entry point for War3AssetsImporter.
@@ -31,6 +32,8 @@ import java.util.concurrent.Callable;
         description = "Imports MDX/BLP assets into a Warcraft 3 map (.w3x/.w3m)."
 )
 public class ImportCommand implements Callable<Integer> {
+
+    private static final Logger LOG = Logger.getLogger(ImportCommand.class.getName());
 
     @Option(
             names = {"-m", "--map"},
@@ -79,6 +82,8 @@ public class ImportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        LOG.info("CLI import: map=" + mapFile + " folder=" + assetsFolder
+                + " createUnits=" + createUnits + " placeUnits=" + placeUnits);
         // Validate inputs
         if (!mapFile.exists()) {
             System.err.println("Error: map file not found: " + mapFile.getAbsolutePath());
@@ -108,16 +113,28 @@ public class ImportCommand implements Callable<Integer> {
         // Build options
         ImportOptions opts = new ImportOptions(createUnits, placeUnits, clearUnits, clearAssets, unitDefinition);
 
+        // Derive default output path: <name>_processed.<ext>
+        String name = mapFile.getName();
+        int dot = name.lastIndexOf('.');
+        String base = dot >= 0 ? name.substring(0, dot) : name;
+        String ext  = dot >= 0 ? name.substring(dot)    : "";
+        File outputFile = new File(mapFile.getParentFile(), base + "_processed" + ext);
+
         // Run import
         System.out.println("Processing map: " + mapFile.getName());
+        System.out.println("Output file:    " + outputFile.getAbsolutePath());
         ImportResult result = new ImportService().process(
-                mapFile, allFiles, assetsFolder, opts, System.out::println);
+                mapFile, outputFile, allFiles, assetsFolder, opts,
+                System.out::println, null);
 
+        LOG.info("CLI import result: " + (result.success() ? "SUCCESS" : "FAILURE")
+                + " output=" + outputFile.getAbsolutePath());
         return result.success() ? 0 : 1;
     }
 
     /** Called from {@link org.example.Main} when args are present. */
     public static int run(String[] args) {
+        LOG.fine("CLI invoked with " + args.length + " argument(s)");
         return new CommandLine(new ImportCommand()).execute(args);
     }
 }

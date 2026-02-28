@@ -1,10 +1,13 @@
 package org.example.gui;
 
+import org.example.core.model.ExistingUnit;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -23,15 +26,18 @@ import java.util.List;
  * (in screen pixels relative to the displayed image). Each unit is rendered as a
  * small triangle pointing in the configured facing direction, or as a coloured
  * square placeholder when icon mode is selected.
+ *
+ * <p>When {@code totalUnits > 0}, only that many positions are rendered (the rest
+ * of the grid is still computed to report the full capacity via {@link CapacityListener}).
  */
 public class MapPreviewPanel extends JPanel {
 
     // -------------------------------------------------------------------------
-    // Enums
+    // Enums & Listener
     // -------------------------------------------------------------------------
 
     public enum DrawingMode {
-        RECTANGLE, CIRCLE;
+        RECTANGLE;
     }
 
     public enum PlacingOrder {
@@ -42,6 +48,20 @@ public class MapPreviewPanel extends JPanel {
 
         @Override
         public String toString() { return label; }
+    }
+
+    /**
+     * Callback fired after each paint cycle with updated placement counts.
+     *
+     * @see #setCapacityListener(CapacityListener)
+     */
+    public interface CapacityListener {
+        /**
+         * @param placed   number of unit positions actually rendered
+         * @param total    number of MDX files selected (desired units)
+         * @param capacity total grid slots available inside the shape
+         */
+        void onCapacityChanged(int placed, int total, int capacity);
     }
 
     // -------------------------------------------------------------------------
@@ -59,9 +79,19 @@ public class MapPreviewPanel extends JPanel {
 
     // ---- Configuration (synced from ImportConfigPanel) ----
     private double       unitAngle    = 270.0;         // degrees, WC3 convention
-    private double       unitSpacing  = 64.0;          // screen pixels (scaled image)
+    private double       unitSpacingX = 16.0;          // screen pixels (scaled image)
+    private double       unitSpacingY = 16.0;
     private boolean      showTriangles = true;
     private PlacingOrder placingOrder  = PlacingOrder.ROWS;
+
+    // ---- Unit count limiting ----
+    private int totalUnits = 0;                        // 0 = show all grid positions
+
+    // ---- Existing units from war3mapUnits.doo (shown as yellow triangles) ----
+    private List<ExistingUnit> existingUnits = Collections.emptyList();
+
+    // ---- Capacity callback ----
+    private CapacityListener capacityListener;
 
     // -------------------------------------------------------------------------
     // Construction
@@ -94,13 +124,53 @@ public class MapPreviewPanel extends JPanel {
     // Public API
     // -------------------------------------------------------------------------
 
-    public void setMapImage(BufferedImage img)      { mapImage = img;         repaint(); }
+    public void setMapImage(BufferedImage img)      { mapImage = img;           repaint(); }
     public void setDrawingMode(DrawingMode m)        { drawingMode = m; }
-    public void setUnitAngle(double deg)             { unitAngle = deg;        repaint(); }
-    public void setUnitSpacing(double px)            { unitSpacing = px;       repaint(); }
-    public void setShowTriangles(boolean b)          { showTriangles = b;      repaint(); }
-    public void setPlacingOrder(PlacingOrder order)  { placingOrder = order;   repaint(); }
-    public void clearShape()                         { p1 = null; p2 = null;  repaint(); }
+    public void setUnitAngle(double deg)             { unitAngle = deg;          repaint(); }
+    public void setUnitSpacingX(double px)           { unitSpacingX = px;        repaint(); }
+    public void setUnitSpacingY(double px)           { unitSpacingY = px;        repaint(); }
+    public void setShowTriangles(boolean b)          { showTriangles = b;        repaint(); }
+    public void setPlacingOrder(PlacingOrder order)  { placingOrder = order;     repaint(); }
+    public void setTotalUnits(int count)             { totalUnits = count;       repaint(); }
+    public void setCapacityListener(CapacityListener l) { this.capacityListener = l; }
+
+    /** Replaces the existing-unit overlay (yellow triangles) with the supplied list. */
+    public void setExistingUnits(List<ExistingUnit> units) {
+        this.existingUnits = units != null ? units : Collections.emptyList();
+        repaint();
+    }
+
+    public void clearShape() {
+        p1 = null;
+        p2 = null;
+        fireCapacity(0, 0);
+        repaint();
+    }
+
+    /**
+     * Returns the drawn rectangle bounds in normalised image coordinates [0..1],
+     * or {@code null} if no rectangle has been drawn yet.
+     *
+     * @return {@code double[4]} = {minX, minY, maxX, maxY} in [0..1], or {@code null}
+     */
+    public double[] getShapeBoundsNormalized() {
+        if (p1 == null || p2 == null) return null;
+        return new double[]{
+                Math.min(p1[0], p2[0]),
+                Math.min(p1[1], p2[1]),
+                Math.max(p1[0], p2[0]),
+                Math.max(p1[1], p2[1])
+        };
+    }
+
+    /**
+     * Returns the rectangle (in screen coords) where the map image is currently drawn,
+     * or {@code null} if no map image is loaded.
+     */
+    public Rectangle getDisplayedImageRect() {
+        if (mapImage == null) return null;
+        return imageRect();
+    }
 
     // -------------------------------------------------------------------------
     // Painting
@@ -116,22 +186,29 @@ public class MapPreviewPanel extends JPanel {
 
         if (mapImage == null) {
             paintNoImage(g);
+            fireCapacity(0, 0);
             return;
         }
 
         Rectangle ir = imageRect();
         g.drawImage(mapImage, ir.x, ir.y, ir.width, ir.height, null);
 
-        if (p1 == null || p2 == null) return;
+        // Draw existing units from war3mapUnits.doo as yellow triangles
+        for (ExistingUnit u : existingUnits) {
+            int sx = (int) (u.normX() * ir.width  + ir.x);
+            int sy = (int) (u.normY() * ir.height + ir.y);
+            paintExistingUnitTriangle(g, sx, sy, u.angleDeg());
+        }
+
+        if (p1 == null || p2 == null) {
+            fireCapacity(0, 0);
+            return;
+        }
 
         Point sp1 = normToScreen(p1, ir);
         Point sp2 = normToScreen(p2, ir);
 
-        if (drawingMode == DrawingMode.RECTANGLE) {
-            paintRectangle(g, sp1, sp2);
-        } else {
-            paintCircle(g, sp1, sp2);
-        }
+        paintRectangle(g, sp1, sp2);
     }
 
     private void paintNoImage(Graphics2D g) {
@@ -150,7 +227,10 @@ public class MapPreviewPanel extends JPanel {
         int ry = Math.min(sp1.y, sp2.y);
         int rw = Math.abs(sp2.x - sp1.x);
         int rh = Math.abs(sp2.y - sp1.y);
-        if (rw < 1 || rh < 1) return;
+        if (rw < 1 || rh < 1) {
+            fireCapacity(0, 0);
+            return;
+        }
 
         // Fill
         g.setColor(new Color(80, 140, 255, 45));
@@ -161,30 +241,44 @@ public class MapPreviewPanel extends JPanel {
         g.drawRect(rx, ry, rw, rh);
 
         // Units
-        for (Point u : rectGrid(rx, ry, rx + rw, ry + rh)) paintUnit(g, u);
+        List<Point> allPositions = rectGrid(rx, ry, rx + rw, ry + rh);
+        paintUnitsWithLimit(g, allPositions);
     }
 
-    // ---- Circle ----
 
-    private void paintCircle(Graphics2D g, Point centre, Point edge) {
-        int r = (int) Math.round(centre.distance(edge));
-        if (r < 1) return;
+    // -------------------------------------------------------------------------
+    // Render units with capacity limiting
+    // -------------------------------------------------------------------------
 
-        // Fill
-        g.setColor(new Color(80, 220, 130, 45));
-        g.fillOval(centre.x - r, centre.y - r, 2 * r, 2 * r);
-        // Border
-        g.setColor(new Color(100, 230, 150, 220));
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawOval(centre.x - r, centre.y - r, 2 * r, 2 * r);
-        // Radius handle
-        g.setColor(new Color(100, 230, 150, 180));
-        g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
-                1f, new float[]{4f, 4f}, 0f));
-        g.drawLine(centre.x, centre.y, edge.x, edge.y);
+    /**
+     * Renders unit positions (limited to {@code totalUnits} when &gt; 0) and
+     * fires the {@link CapacityListener} with capacity information.
+     */
+    private void paintUnitsWithLimit(Graphics2D g, List<Point> allPositions) {
+        int capacity = allPositions.size();
+        int placed;
 
-        // Units
-        for (Point u : circleGrid(centre.x, centre.y, r)) paintUnit(g, u);
+        if (totalUnits > 0) {
+            placed = Math.min(totalUnits, capacity);
+        } else {
+            placed = capacity;
+        }
+
+        for (int i = 0; i < placed; i++) {
+            paintUnit(g, allPositions.get(i));
+        }
+
+        fireCapacity(placed, capacity);
+    }
+
+    // -------------------------------------------------------------------------
+    // Capacity callback
+    // -------------------------------------------------------------------------
+
+    private void fireCapacity(int placed, int capacity) {
+        if (capacityListener != null) {
+            capacityListener.onCapacityChanged(placed, totalUnits, capacity);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -193,36 +287,20 @@ public class MapPreviewPanel extends JPanel {
 
     private List<Point> rectGrid(int x1, int y1, int x2, int y2) {
         List<Point> out = new ArrayList<>();
-        double s = Math.max(1, unitSpacing);
+        double sx = Math.max(1, unitSpacingX);
+        double sy = Math.max(1, unitSpacingY);
         if (placingOrder == PlacingOrder.ROWS) {
-            for (double y = y1 + s / 2; y < y2; y += s)
-                for (double x = x1 + s / 2; x < x2; x += s)
+            for (double y = y1 + sy / 2; y < y2; y += sy)
+                for (double x = x1 + sx / 2; x < x2; x += sx)
                     out.add(new Point((int) x, (int) y));
         } else {
-            for (double x = x1 + s / 2; x < x2; x += s)
-                for (double y = y1 + s / 2; y < y2; y += s)
+            for (double x = x1 + sx / 2; x < x2; x += sx)
+                for (double y = y1 + sy / 2; y < y2; y += sy)
                     out.add(new Point((int) x, (int) y));
         }
         return out;
     }
 
-    private List<Point> circleGrid(int cx, int cy, int r) {
-        List<Point> out = new ArrayList<>();
-        double s  = Math.max(1, unitSpacing);
-        double r2 = (double) r * r;
-        if (placingOrder == PlacingOrder.ROWS) {
-            for (double y = cy - r + s / 2; y < cy + r; y += s)
-                for (double x = cx - r + s / 2; x < cx + r; x += s)
-                    if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2)
-                        out.add(new Point((int) x, (int) y));
-        } else {
-            for (double x = cx - r + s / 2; x < cx + r; x += s)
-                for (double y = cy - r + s / 2; y < cy + r; y += s)
-                    if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2)
-                        out.add(new Point((int) x, (int) y));
-        }
-        return out;
-    }
 
     // -------------------------------------------------------------------------
     // Unit rendering
@@ -267,6 +345,33 @@ public class MapPreviewPanel extends JPanel {
         g.setColor(new Color(255, 85, 85, 210));
         g.fillPolygon(xs, ys, 3);
         g.setColor(new Color(180, 20, 20, 255));
+        g.setStroke(new BasicStroke(0.8f));
+        g.drawPolygon(xs, ys, 3);
+    }
+
+    /**
+     * Draws a yellow arrow-head triangle for a unit that already exists in the map,
+     * using that unit's own facing angle rather than the global {@link #unitAngle}.
+     */
+    private void paintExistingUnitTriangle(Graphics2D g, int x, int y, double angleDeg) {
+        double rad = Math.toRadians(angleDeg);
+
+        int tipX = x + (int) (14 * Math.cos(rad));
+        int tipY = y - (int) (14 * Math.sin(rad));   // negate for screen Y
+
+        double leftRad  = rad + Math.toRadians(140);
+        double rightRad = rad - Math.toRadians(140);
+        int lx = x + (int) (9 * Math.cos(leftRad));
+        int ly = y - (int) (9 * Math.sin(leftRad));
+        int rx = x + (int) (9 * Math.cos(rightRad));
+        int ry = y - (int) (9 * Math.sin(rightRad));
+
+        int[] xs = {tipX, lx, rx};
+        int[] ys = {tipY, ly, ry};
+
+        g.setColor(new Color(255, 220, 0, 200));
+        g.fillPolygon(xs, ys, 3);
+        g.setColor(new Color(180, 140, 0, 255));
         g.setStroke(new BasicStroke(0.8f));
         g.drawPolygon(xs, ys, 3);
     }

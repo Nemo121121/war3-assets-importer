@@ -5,55 +5,74 @@ import org.example.core.model.ImportResult;
 import org.example.core.service.ImportService;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * SwingWorker that runs {@link ImportService#process} on a background thread
- * and forwards progress log lines to the EDT via {@link #process(List)}.
+ * SwingWorker that runs {@link ImportService#process} on a background thread,
+ * forwards progress log lines to the EDT via {@link #process(List)}, and reports
+ * completion percentage via {@link #setProgress(int)} so the status bar can be updated.
  */
 public class MapProcessingTask extends SwingWorker<ImportResult, String> {
 
+    private static final Logger LOG = Logger.getLogger(MapProcessingTask.class.getName());
+
     private final File mapFile;
+    private final File outputFile;
     private final Set<Path> selectedFiles;
     private final File assetsRootFolder;
     private final ImportOptions options;
     private final ImportService importService;
     private final Consumer<String> logConsumer;
+    private final JFrame owner;
 
     public MapProcessingTask(
             File mapFile,
+            File outputFile,
             Set<Path> selectedFiles,
             File assetsRootFolder,
             ImportOptions options,
             ImportService importService,
-            Consumer<String> logConsumer
+            Consumer<String> logConsumer,
+            JFrame owner
     ) {
         this.mapFile = mapFile;
+        this.outputFile = outputFile;
         this.selectedFiles = selectedFiles;
         this.assetsRootFolder = assetsRootFolder;
         this.options = options;
         this.importService = importService;
         this.logConsumer = logConsumer;
+        this.owner = owner;
     }
 
     @Override
     protected ImportResult doInBackground() {
+        LOG.info("Import task started: map=" + mapFile.getName()
+                + " output=" + outputFile.getName()
+                + " files=" + selectedFiles.size());
         return importService.process(
                 mapFile,
+                outputFile,
                 selectedFiles,
                 assetsRootFolder,
                 options,
-                msg -> publish(msg)          // thread-safe: routes through process() below
+                msg -> publish(msg),           // log lines — routed through process() on EDT
+                pct -> setProgress(pct)        // percent 0–100 — triggers PropertyChangeEvent
         );
     }
 
     @Override
     protected void process(List<String> chunks) {
-        // Back on the EDT — forward each line to the UI log consumer
+        LOG.fine("Flushing " + chunks.size() + " log line(s) to UI");
         for (String msg : chunks) {
             if (logConsumer != null) logConsumer.accept(msg);
         }
@@ -63,13 +82,42 @@ public class MapProcessingTask extends SwingWorker<ImportResult, String> {
     protected void done() {
         try {
             ImportResult result = get();
-            if (logConsumer != null) {
-                logConsumer.accept(result.success()
-                        ? "Done."
-                        : "Finished with errors.");
+            LOG.info("Import task done: success=" + result.success()
+                    + " logs=" + result.logs().size());
+            if (result.success()) {
+                if (logConsumer != null) logConsumer.accept("Done.");
+            } else {
+                if (logConsumer != null) logConsumer.accept("Finished with errors.");
+                // Show an error popup with the last meaningful log line
+                String errorDetail = lastError(result.logs());
+                JOptionPane.showMessageDialog(
+                        owner,
+                        "Import failed:\n\n" + errorDetail,
+                        "Import Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
             }
         } catch (Exception e) {
-            if (logConsumer != null) logConsumer.accept("Task failed: " + e.getMessage());
+            LOG.log(Level.SEVERE, "Import task threw an exception", e);
+            String msg = "Task failed: " + e.getMessage();
+            if (logConsumer != null) logConsumer.accept(msg);
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            JTextArea textArea = new JTextArea(msg + "\n\n--- Stack Trace ---\n" + sw);
+            textArea.setEditable(false);
+            textArea.setCaretPosition(0);
+            JScrollPane errScroll = new JScrollPane(textArea);
+            errScroll.setPreferredSize(new Dimension(600, 300));
+            JOptionPane.showMessageDialog(owner, errScroll, "Import Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /** Returns the last log line that starts with "Error", or the last line overall. */
+    private static String lastError(List<String> logs) {
+        if (logs == null || logs.isEmpty()) return "Unknown error.";
+        for (int i = logs.size() - 1; i >= 0; i--) {
+            if (logs.get(i).startsWith("Error")) return logs.get(i);
+        }
+        return logs.get(logs.size() - 1);
     }
 }

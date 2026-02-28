@@ -1,6 +1,7 @@
 package org.example.core.util;
 
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Generates unique 4-character unit IDs for Warcraft 3 custom object modifications.
@@ -9,6 +10,8 @@ import java.util.Set;
  */
 public class UnitIDGenerator {
 
+    private static final Logger LOG = Logger.getLogger(UnitIDGenerator.class.getName());
+
     /**
      * Returns the next available ID not already in {@code existingIds}.
      *
@@ -16,6 +19,7 @@ public class UnitIDGenerator {
      * @return next unique ID string, or {@code null} if all 26,000 IDs are exhausted
      */
     public static String generateNextId(Set<String> existingIds) {
+        LOG.fine("Generating next unit ID (pool size: " + existingIds.size() + " already used)");
         // Start index at 'x'
         int startIndex = 'x' - 'a';
 
@@ -26,12 +30,14 @@ public class UnitIDGenerator {
             for (int j = 0; j <= 999; j++) {
                 String id = String.format("%c%03d", prefix, j);
                 if (!existingIds.contains(id)) {
+                    LOG.fine("Generated unit ID: " + id);
                     return id;
                 }
             }
         }
 
         // All possible IDs are used
+        LOG.warning("Unit ID space exhausted — all 26,000 IDs are in use");
         return null;
     }
 }

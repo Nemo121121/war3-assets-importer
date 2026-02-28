@@ -48,6 +48,7 @@ public class AssetTreePanel extends JPanel {
     private File modelsFolder;
     private AssetSelectionListener selectionListener;
     private FolderSelectionListener folderListener;
+    private ImportConfigPanel importConfigPanel;
 
     public AssetTreePanel() {
         setLayout(new java.awt.BorderLayout());
@@ -79,6 +80,8 @@ public class AssetTreePanel extends JPanel {
             } else {
                 if (folderListener != null) folderListener.onFolderSelected(collectBlpPathsUnder(node));
             }
+            // Update ImportConfigPanel with currently selected MDX filenames
+            updateImportConfigPanel();
         });
     }
 
@@ -92,6 +95,10 @@ public class AssetTreePanel extends JPanel {
 
     public void setFolderSelectionListener(FolderSelectionListener listener) {
         this.folderListener = listener;
+    }
+
+    public void setImportConfigPanel(ImportConfigPanel panel) {
+        this.importConfigPanel = panel;
     }
 
     public void setModelsFolder(File folder) {
@@ -251,6 +258,54 @@ public class AssetTreePanel extends JPanel {
         }
         for (int i = 0; i < treeNode.getChildCount(); i++) {
             collectChecked(treeNode.getChildAt(i), result);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Updating ImportConfigPanel with selected MDX filenames
+    // -------------------------------------------------------------------------
+
+    /**
+     * Collects all checked MDX filenames and updates the ImportConfigPanel preview.
+     * Called whenever a checkbox state changes in the tree.
+     */
+    private void updateImportConfigPanel() {
+        if (importConfigPanel == null) return;
+        List<String> mdxFilenames = collectCheckedMdxFilenames();
+        importConfigPanel.setSelectedMdxFilenames(mdxFilenames);
+    }
+
+    /**
+     * Collects the filenames (without extensions) of all checked MDX files in the tree.
+     * Returns just the filename part (e.g. "mymodel.mdx" not the full path).
+     */
+    private List<String> collectCheckedMdxFilenames() {
+        List<String> result = new ArrayList<>();
+        TreeNode root = (TreeNode) treeModel.getRoot();
+        collectMdxFilenamesRecursive(root, result);
+        return result;
+    }
+
+    /**
+     * Recursively collects checked MDX filenames from the tree.
+     */
+    private void collectMdxFilenamesRecursive(TreeNode treeNode, List<String> result) {
+        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
+        if (cbNode.isLeaf() && cbNode.isChecked()) {
+            TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
+            if (data.isFile()) {
+                String rel = data.relativePath();
+                // Strip the leading category prefix (e.g. "MDX Files/" or "BLP Files/")
+                int slash = rel.indexOf('/');
+                if (slash >= 0) rel = rel.substring(slash + 1);
+                // Only include MDX files
+                if (rel.toLowerCase().endsWith(".mdx")) {
+                    result.add(rel);
+                }
+            }
+        }
+        for (int i = 0; i < treeNode.getChildCount(); i++) {
+            collectMdxFilenamesRecursive(treeNode.getChildAt(i), result);
         }
     }
 

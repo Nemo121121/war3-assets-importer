@@ -15,7 +15,7 @@ public class NameFormatter {
      * Formats a filename according to the specified format.
      *
      * @param filename the input filename (e.g. "my_model_name.mdx")
-     * @param format   the desired format: "Space Separated", "camelCase", "snake_case", or "UPPER_CASE"
+     * @param format   the desired format: "Space Separated", "Space Separated (keep case)", "camelCase", "snake_case", or "UPPER_CASE"
      * @return the formatted name (without file extension)
      */
     public static String format(String filename, String format) {
@@ -27,6 +27,7 @@ public class NameFormatter {
 
         return switch (format) {
             case "Space Separated" -> spaceSeparated(words);
+            case "Space Separated (keep case)" -> spaceSeparatedKeepCase(words);
             case "camelCase" -> camelCase(words);
             case "snake_case" -> snakeCase(words);
             case "UPPER_CASE" -> upperCase(words);
@@ -61,6 +62,15 @@ public class NameFormatter {
         for (int i = 0; i < words.length; i++) {
             if (i > 0) sb.append(" ");
             sb.append(capitalize(words[i]));
+        }
+        return sb.toString();
+    }
+
+    private static String spaceSeparatedKeepCase(String[] words) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) sb.append(" ");
+            sb.append(words[i]);
         }
         return sb.toString();
     }

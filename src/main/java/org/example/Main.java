@@ -4,6 +4,7 @@ import com.hiveworkshop.blizzard.blp.BLPReaderSpi;
 import com.hiveworkshop.blizzard.blp.BLPWriterSpi;
 import org.example.cli.ImportCommand;
 import org.example.gui.MainFrame;
+import org.example.gui.settings.AppearanceConfig;
 
 import javax.imageio.spi.IIORegistry;
 import javax.swing.*;
@@ -28,7 +29,19 @@ public class Main {
         registerBlpPlugin();
 
         if (args.length == 0) {
-            SwingUtilities.invokeLater(MainFrame::new);
+            // Register FlatLaf themes so they appear in UIManager.getInstalledLookAndFeels().
+            // Uses the standard Swing API directly (FlatLaf 3.x removed installLookAndFeel()).
+            UIManager.installLookAndFeel("FlatLaf Light",    "com.formdev.flatlaf.FlatLightLaf");
+            UIManager.installLookAndFeel("FlatLaf Dark",     "com.formdev.flatlaf.FlatDarkLaf");
+            UIManager.installLookAndFeel("FlatLaf IntelliJ", "com.formdev.flatlaf.FlatIntelliJLaf");
+            UIManager.installLookAndFeel("FlatLaf Darcula",  "com.formdev.flatlaf.FlatDarculaLaf");
+
+            // Load and apply the saved L&F before any Swing components are created
+            AppearanceConfig appearanceConfig = new AppearanceConfig();
+            appearanceConfig.load();
+            appearanceConfig.applyIfSet();
+
+            SwingUtilities.invokeLater(() -> new MainFrame(appearanceConfig));
         } else {
             System.exit(ImportCommand.run(args));
         }

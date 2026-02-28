@@ -44,7 +44,30 @@ import java.util.List;
 public class PreviewPanel extends JPanel {
 
     private static final int PREVIEW_SIZE = 256;
-    private static final int THUMB_SIZE   = 96;
+
+    /** Available thumbnail sizes, similar to Windows Explorer view options. */
+    public enum IconSize {
+        EXTRA_LARGE("Extra Large Icons", 256),
+        LARGE("Large Icons",             128),
+        MEDIUM("Medium Icons",            96),
+        SMALL("Small Icons",              48);
+
+        private final String label;
+        private final int pixels;
+
+        IconSize(String label, int pixels) {
+            this.label = label;
+            this.pixels = pixels;
+        }
+
+        public int getPixels() { return pixels; }
+
+        @Override public String toString() { return label; }
+    }
+
+    // ---- Current thumbnail size (user-selectable) ----
+    private IconSize currentIconSize = IconSize.MEDIUM;
+    private int thumbSize = IconSize.MEDIUM.getPixels();
 
     // ---- Single-image mode ----
     private final JLabel singleLabel     = new JLabel();
@@ -60,8 +83,28 @@ public class PreviewPanel extends JPanel {
     // ---- Async thumb loading ----
     private SwingWorker<?, ?> thumbLoader;
 
+    // ---- Cached file list for re-rendering on size change ----
+    private List<File> currentFiles = List.of();
+    private boolean inGridMode = false;
+
+    // ---- Size selector ----
+    private final JComboBox<IconSize> sizeCombo;
+
     public PreviewPanel() {
         setLayout(new BorderLayout());
+
+        // ---- Icon size toolbar ----
+        sizeCombo = new JComboBox<>(IconSize.values());
+        sizeCombo.setSelectedItem(IconSize.MEDIUM);
+        sizeCombo.setMaximumSize(sizeCombo.getPreferredSize());
+        sizeCombo.addActionListener(e -> onIconSizeChanged());
+
+        JToolBar toolbar = new JToolBar();
+        toolbar.setFloatable(false);
+        toolbar.add(new JLabel(" View: "));
+        toolbar.add(sizeCombo);
+
+        add(toolbar, BorderLayout.NORTH);
 
         // Single-image: centred label inside a GridBagLayout panel
         singleLabel.setHorizontalAlignment(SwingConstants.CENTER);
@@ -81,12 +124,25 @@ public class PreviewPanel extends JPanel {
         setPreferredSize(new Dimension(PREVIEW_SIZE + 40, PREVIEW_SIZE + 40));
     }
 
+    private void onIconSizeChanged() {
+        IconSize selected = (IconSize) sizeCombo.getSelectedItem();
+        if (selected == null || selected == currentIconSize) return;
+        currentIconSize = selected;
+        thumbSize = selected.getPixels();
+
+        // Re-render current view with new size
+        if (inGridMode && !currentFiles.isEmpty()) {
+            setImages(currentFiles);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Single-image setters
     // -------------------------------------------------------------------------
 
     public void setImage(BufferedImage image) {
         cancelThumbLoader();
+        inGridMode = false;
         switchTo(singleContainer);
         singleLabel.setIcon(image != null
                 ? scaled(image, PREVIEW_SIZE)
@@ -95,6 +151,7 @@ public class PreviewPanel extends JPanel {
 
     public void setImage(File file) {
         cancelThumbLoader();
+        inGridMode = false;
         switchTo(singleContainer);
         try {
             BufferedImage img = ImageIO.read(file);
@@ -106,6 +163,7 @@ public class PreviewPanel extends JPanel {
 
     public void setImage(byte[] imageData) {
         cancelThumbLoader();
+        inGridMode = false;
         switchTo(singleContainer);
         try {
             BufferedImage img = ImageIO.read(new ByteArrayInputStream(imageData));
@@ -126,6 +184,8 @@ public class PreviewPanel extends JPanel {
      */
     public void setImages(List<File> files) {
         cancelThumbLoader();
+        currentFiles = files;
+        inGridMode = true;
         gridPanel.removeAll();
         switchTo(gridPanel);
 
@@ -134,14 +194,17 @@ public class PreviewPanel extends JPanel {
             return;
         }
 
+        int ts = thumbSize;
+        int maxLabelChars = ts >= 128 ? 20 : ts >= 96 ? 14 : 10;
+
         // Create placeholder labels synchronously so the layout is ready immediately.
         List<JLabel> labels = new ArrayList<>(files.size());
-        ImageIcon placeholder = fallback(THUMB_SIZE, 2);
+        ImageIcon placeholder = fallback(ts, 2);
         for (File f : files) {
-            JLabel lbl = new JLabel(truncate(f.getName(), 14), placeholder, SwingConstants.CENTER);
+            JLabel lbl = new JLabel(truncate(f.getName(), maxLabelChars), placeholder, SwingConstants.CENTER);
             lbl.setVerticalTextPosition(SwingConstants.BOTTOM);
             lbl.setHorizontalTextPosition(SwingConstants.CENTER);
-            lbl.setPreferredSize(new Dimension(THUMB_SIZE + 20, THUMB_SIZE + 30));
+            lbl.setPreferredSize(new Dimension(ts + 20, ts + 30));
             lbl.setToolTipText(f.getName());
 
             // Double-click → show BLP metadata popup
@@ -165,7 +228,7 @@ public class PreviewPanel extends JPanel {
                     try {
                         BufferedImage img = ImageIO.read(files.get(i));
                         if (img != null) {
-                            publish(new ThumbResult(labels.get(i), scaled(img, THUMB_SIZE)));
+                            publish(new ThumbResult(labels.get(i), scaled(img, ts)));
                         }
                     } catch (Exception ignored) {}
                 }
@@ -422,12 +485,12 @@ public class PreviewPanel extends JPanel {
 
         @Override
         public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return THUMB_SIZE + 30; // one thumbnail row
+            return thumbSize + 30; // one thumbnail row
         }
 
         @Override
         public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return (THUMB_SIZE + 30) * 2;
+            return (thumbSize + 30) * 2;
         }
 
         /** Forces panel width == viewport width so FlowLayout wraps at the right boundary. */

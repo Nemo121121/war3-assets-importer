@@ -2,31 +2,63 @@ package org.example.core.util;
 
 import net.moonlightflower.wc3libs.dataTypes.app.Coords2DF;
 
+import java.util.logging.Logger;
+
 /**
  * Calculates sequential placement positions for units within map camera bounds.
- * Positions are arranged in a left-to-right, top-to-bottom grid with a fixed step size.
+ * Positions are arranged in a left-to-right, top-to-bottom grid with configurable
+ * horizontal and vertical step sizes.
  */
 public class UnitPlacementGrid {
+
+    private static final Logger LOG = Logger.getLogger(UnitPlacementGrid.class.getName());
+
     private final float startX;
     private final float startY;
     private final float endX;
     private final float endY;
-    private final float step;
+    private final float stepX;
+    private final float stepY;
 
     private float currentX;
     private float currentY;
     private int unitsPlaced;
 
-    public UnitPlacementGrid(Coords2DF topLeft, Coords2DF bottomRight, float step) {
-        this.startX = topLeft.getX().getVal();
-        this.startY = topLeft.getY().getVal();
-        this.endX = bottomRight.getX().getVal();
-        this.endY = bottomRight.getY().getVal();
-        this.step = step;
+    public UnitPlacementGrid(Coords2DF topLeft, Coords2DF bottomRight, float stepX, float stepY) {
+        this(topLeft.getX().getVal(),
+             bottomRight.getX().getVal(),
+             bottomRight.getY().getVal(),
+             topLeft.getY().getVal(),
+             stepX, stepY);
+    }
+
+    /**
+     * Creates a grid from explicit world-space min/max bounds.
+     *
+     * @param minX     western boundary (smallest X)
+     * @param maxX     eastern boundary (largest X)
+     * @param minY     southern boundary (smallest Y in WC3 world coords)
+     * @param maxY     northern boundary (largest Y in WC3 world coords)
+     * @param stepX    horizontal spacing between units (world units)
+     * @param stepY    vertical spacing between units (world units)
+     */
+    public UnitPlacementGrid(float minX, float maxX, float minY, float maxY,
+                              float stepX, float stepY) {
+        this.startX = minX;
+        this.startY = maxY;  // start from the north (high Y)
+        this.endX   = maxX;
+        this.endY   = minY;  // stop at the south (low Y)
+        this.stepX  = stepX;
+        this.stepY  = stepY;
 
         this.currentX = startX;
         this.currentY = startY;
         this.unitsPlaced = 0;
+
+        LOG.fine(String.format(
+                "UnitPlacementGrid created: bounds=(%.0f,%.0f)→(%.0f,%.0f) step=(%.1f,%.1f) capacity≈%d",
+                startX, startY, endX, endY, stepX, stepY,
+                (int) ((endX - startX) / stepX + 1) * (int) ((startY - endY) / stepY + 1)));
     }
 
     /**
@@ -34,15 +66,17 @@ public class UnitPlacementGrid {
      */
     public Coords2DF nextPosition() {
         if (currentY < endY) {
-            // No more space to place units
+            LOG.fine("UnitPlacementGrid exhausted after " + unitsPlaced + " unit(s)");
             return null;
         }
 
         Coords2DF pos = new Coords2DF(currentX, currentY);
-        currentX += step;
+        LOG.finest(String.format("nextPosition: placing unit %d at (%.1f, %.1f)", unitsPlaced + 1, currentX, currentY));
+
+        currentX += stepX;
         if (currentX > endX) {
             currentX = startX;
-            currentY -= step;
+            currentY -= stepY;
         }
 
         unitsPlaced++;
@@ -50,6 +84,7 @@ public class UnitPlacementGrid {
     }
 
     public int getUnitsPlaced() {
+        LOG.fine("getUnitsPlaced: " + unitsPlaced);
         return unitsPlaced;
     }
 }

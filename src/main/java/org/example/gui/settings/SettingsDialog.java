@@ -7,35 +7,42 @@ import java.awt.*;
 import java.util.Locale;
 
 /**
- * Modal settings dialog with two tabs:
+ * Modal settings dialog with three tabs:
  * <ol>
  *   <li><b>Language</b> — locale switcher; triggers live UI refresh via callback</li>
  *   <li><b>Keybindings</b> — hotkey table; persisted on dialog close</li>
+ *   <li><b>Look & Feel</b> — Swing UI style selector; applied immediately</li>
  * </ol>
  *
  * <p>Usage:
  * <pre>
- *   SettingsDialog dlg = new SettingsDialog(parentFrame, config);
+ *   SettingsDialog dlg = new SettingsDialog(parentFrame, keybindingsConfig, appearanceConfig);
  *   dlg.setLocaleChangeListener(locale -> mainFrame.applyI18n());
+ *   dlg.setLookAndFeelChangeListener(() -> SwingUtilities.updateComponentTreeUI(mainFrame));
  *   dlg.setVisible(true);
  * </pre>
  */
 public class SettingsDialog extends JDialog {
 
     private final KeybindingsConfig config;
+    private final AppearanceConfig appearanceConfig;
     private final LanguagePanel languagePanel;
     private final KeybindingPanel keybindingPanel;
+    private final LookAndFeelPanel lookAndFeelPanel;
 
-    public SettingsDialog(JFrame parent, KeybindingsConfig config) {
+    public SettingsDialog(JFrame parent, KeybindingsConfig config, AppearanceConfig appearanceConfig) {
         super(parent, Messages.get("settings.title"), true /* modal */);
         this.config = config;
+        this.appearanceConfig = appearanceConfig;
 
         languagePanel = new LanguagePanel();
         keybindingPanel = new KeybindingPanel(config);
+        lookAndFeelPanel = new LookAndFeelPanel(appearanceConfig);
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab(Messages.get("settings.tab.language"), languagePanel);
         tabs.addTab(Messages.get("settings.tab.keybindings"), keybindingPanel);
+        tabs.addTab("Look & Feel", lookAndFeelPanel);
 
         JButton closeBtn = new JButton("Close");
         closeBtn.addActionListener(e -> onClose());
@@ -65,12 +72,27 @@ public class SettingsDialog extends JDialog {
         });
     }
 
+    /**
+     * Registers a callback that fires immediately when the user switches Look & Feel.
+     * Typically used to call {@code SwingUtilities.updateComponentTreeUI(mainFrame)}.
+     */
+    public void setLookAndFeelChangeListener(LookAndFeelPanel.LookAndFeelChangeListener listener) {
+        lookAndFeelPanel.setLookAndFeelChangeListener(() -> {
+            // Refresh dialog's own UI tree first
+            SwingUtilities.updateComponentTreeUI(this);
+            pack();
+            // Then notify the parent (main frame)
+            listener.onLookAndFeelChanged();
+        });
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 
     private void onClose() {
         config.save();
+        appearanceConfig.save();
         dispose();
     }
 

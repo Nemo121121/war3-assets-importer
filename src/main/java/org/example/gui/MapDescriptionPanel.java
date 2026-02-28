@@ -8,17 +8,16 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.List;
 
 /**
  * Left-hand panel showing map metadata (read-only) and processing options (user-editable).
  * All labels are sourced from the {@link Messages} bundle for i18n support.
  */
-public class MapOptionsPanel extends JPanel {
+public class MapDescriptionPanel extends JPanel {
 
     // ---- Read-only metadata fields ----
     private final JTextField nameField = new JTextField();
-    private final JTextField descField = new JTextField();
+    private final JTextArea  descArea  = new JTextArea();
     private final JTextField authorField = new JTextField();
     private final JTextField mapVersionField = new JTextField();
     private final JTextField editorVersionField = new JTextField();
@@ -31,7 +30,7 @@ public class MapOptionsPanel extends JPanel {
     // ---- Label references for i18n refresh ----
     private JLabel nameLabel, authorLabel, gameVersionLabel, editorVersionLabel, descLabel;
 
-    public MapOptionsPanel() {
+    public MapDescriptionPanel() {
         setLayout(new BorderLayout());
         imageLabel.setPreferredSize(new Dimension(PREVIEW_SIZE, PREVIEW_SIZE));
         imageLabel.setIcon(generateFallbackImage());
@@ -53,15 +52,21 @@ public class MapOptionsPanel extends JPanel {
         JPanel labelPanel = new JPanel();
         labelPanel.setLayout(new BoxLayout(labelPanel, BoxLayout.Y_AXIS));
         labelPanel.add(createRow(nameLabel, nameField));
+        labelPanel.add(Box.createVerticalStrut(5));
         labelPanel.add(createRow(authorLabel, authorField));
+        labelPanel.add(Box.createVerticalStrut(5));
         labelPanel.add(createRow(gameVersionLabel, mapVersionField));
+        labelPanel.add(Box.createVerticalStrut(5));
         labelPanel.add(createRow(editorVersionLabel, editorVersionField));
-        labelPanel.add(createRow(descLabel, descField));
+        // Cap single-line rows and struts to their preferred heights
         for (Component c : labelPanel.getComponents()) {
             if (c instanceof JComponent jc) {
                 jc.setMaximumSize(new Dimension(Integer.MAX_VALUE, jc.getPreferredSize().height));
             }
         }
+        // Description row added after the cap loop so it can grow vertically
+        labelPanel.add(Box.createVerticalStrut(5));
+        labelPanel.add(createDescRow(descLabel));
         labelPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
         JPanel headerPanel = new JPanel(new BorderLayout());
@@ -95,7 +100,7 @@ public class MapOptionsPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     public void setMapName(String name)       { nameField.setText(name); }
-    public void setDescription(String desc)   { descField.setText(desc); }
+    public void setDescription(String desc)   { descArea.setText(desc); descArea.setCaretPosition(0); }
     public void setAuthor(String author)      { authorField.setText(author); }
     public void setMapVersion(String version) { mapVersionField.setText(version); }
     public void setEditorVersion(String v)    { editorVersionField.setText(v); }
@@ -129,10 +134,10 @@ public class MapOptionsPanel extends JPanel {
 
     private JPanel createRow(JLabel label, JTextField field) {
         label.setFont(label.getFont().deriveFont(Font.BOLD));
-        field.setEditable(false);
+        field.setEditable(false);  // Read-only: cannot edit
         field.setBorder(null);
         field.setOpaque(false);
-        field.setFocusable(false);
+        field.setFocusable(true);  // Allow focus for text selection
         field.setDisabledTextColor(Color.BLACK);
         field.setFont(field.getFont().deriveFont(Font.PLAIN));
         Dimension pref = new Dimension(Short.MAX_VALUE, label.getPreferredSize().height);
@@ -143,6 +148,32 @@ public class MapOptionsPanel extends JPanel {
         JPanel row = new JPanel(new BorderLayout(5, 0));
         row.add(label, BorderLayout.WEST);
         row.add(field, BorderLayout.CENTER);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return row;
+    }
+
+    /** Builds the Description row with a multi-line, read-only, word-wrapping JTextArea. */
+    private JPanel createDescRow(JLabel label) {
+        label.setFont(label.getFont().deriveFont(Font.BOLD));
+        label.setVerticalAlignment(SwingConstants.TOP);
+
+        descArea.setEditable(false);
+        descArea.setLineWrap(true);
+        descArea.setWrapStyleWord(true);
+        descArea.setOpaque(false);
+        descArea.setFont(nameField.getFont().deriveFont(Font.PLAIN));
+        descArea.setRows(3);
+
+        JScrollPane scroll = new JScrollPane(descArea,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.setBorder(null);
+
+        JPanel row = new JPanel(new BorderLayout(5, 0));
+        row.add(label, BorderLayout.WEST);
+        row.add(scroll, BorderLayout.CENTER);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         return row;
     }
