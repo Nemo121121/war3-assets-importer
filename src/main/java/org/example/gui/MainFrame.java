@@ -24,7 +24,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.text.MessageFormat;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -482,11 +481,9 @@ public class MainFrame {
         applyKeybindings();
     }
 
-    private void onAssetSelected(String relativePath) {
-        if (modelsFolder == null) return;
-        File asset = new File(modelsFolder, relativePath);
-        if (asset.exists() && asset.isFile()) {
-            previewPanel.setImage(asset);
+    private void onAssetSelected(File file) {
+        if (file.exists() && file.isFile()) {
+            previewPanel.setImage(file);
         }
     }
 
@@ -494,14 +491,8 @@ public class MainFrame {
     // i18n refresh
     // -------------------------------------------------------------------------
 
-    private void onFolderSelected(List<String> textureRelativePaths) {
-        if (modelsFolder == null) return;
-        List<File> files = new ArrayList<>(textureRelativePaths.size());
-        for (String rel : textureRelativePaths) {
-            File f = new File(modelsFolder, rel);
-            if (f.exists()) files.add(f);
-        }
-        previewPanel.setImages(files);
+    private void onFolderSelected(List<File> textureFiles) {
+        previewPanel.setImages(textureFiles);
     }
 
     // -------------------------------------------------------------------------

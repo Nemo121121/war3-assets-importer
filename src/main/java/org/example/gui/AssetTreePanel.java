@@ -15,6 +15,7 @@ import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,31 +25,49 @@ import java.util.Set;
 /**
  * Panel containing the hierarchical asset selection tree.
  *
- * <p>Displays MDX and BLP files organised by folder, with tri-state checkboxes.
- * Holding Ctrl while expanding/collapsing applies the action recursively.
+ * <p>Offers two views toggled by radio buttons:
+ * <ul>
+ *   <li><b>Category View</b> — MDX and texture files grouped into category nodes
+ *       (the original behaviour).</li>
+ *   <li><b>Folder View</b> — the raw filesystem tree rooted at the models folder,
+ *       with lazy expansion and identical tri-state checkbox behaviour.</li>
+ * </ul>
+ *
+ * <p>{@link #getCheckedFiles()} always returns checked files from whichever view is active.
  */
 public class AssetTreePanel extends JPanel {
 
-    /** Callback fired when the user focuses a leaf node (file) in the tree. */
+    /** Callback fired when the user focuses a single file node. */
     public interface AssetSelectionListener {
-        void onAssetSelected(String relativePath);
+        void onAssetSelected(File file);
     }
 
-    /** Callback fired when the user focuses a folder node in the tree. */
+    /** Callback fired when the user focuses a folder node. */
     public interface FolderSelectionListener {
-        /** @param textureRelativePaths relative paths of texture files under the folder (stripped of category prefix). */
-        void onFolderSelected(List<String> textureRelativePaths);
+        void onFolderSelected(List<File> textureFiles);
     }
 
     /** Marker stored as the user-object of a not-yet-expanded sentinel child node. */
     private static final String SENTINEL = "__LAZY__";
 
+    // ---- Category (asset) tree ----
     private final JCheckBoxTree assetTree;
     private final DefaultTreeModel treeModel;
-    /** Maps unexpanded folder nodes to their FolderNode data so children can be built on demand. */
     private final java.util.IdentityHashMap<JCheckBoxTreeNode, FolderNode> pendingNodes
             = new java.util.IdentityHashMap<>();
-    private boolean controlDown = false;
+
+    // ---- Filesystem (folder) tree ----
+    private final JCheckBoxTree folderTree;
+    private final DefaultTreeModel folderTreeModel;
+    private final java.util.IdentityHashMap<JCheckBoxTreeNode, File> pendingFolderDirs
+            = new java.util.IdentityHashMap<>();
+
+    // ---- Shared UI ----
+    private final JPanel cardPanel;
+    private boolean isFolderTreeActive = false;
+
+    // ---- Shared state ----
+    private boolean controlDown   = false;
     private boolean isTreeUpdating = false;
     private File modelsFolder;
     private AssetSelectionListener selectionListener;
@@ -58,35 +77,100 @@ public class AssetTreePanel extends JPanel {
     public AssetTreePanel() {
         setLayout(new java.awt.BorderLayout());
 
+        // ---- Category tree ----
         TreeNodeData rootData = new TreeNodeData(Messages.get("tree.root"), false, "", 0, 0);
         JCheckBoxTreeNode root = new JCheckBoxTreeNode(rootData, true);
         treeModel = new DefaultTreeModel(root);
         assetTree = new JCheckBoxTree(treeModel);
 
-        JScrollPane treeScrollPane = new JScrollPane(assetTree);
-        treeScrollPane.setPreferredSize(new java.awt.Dimension(200, 400));
-        add(treeScrollPane, java.awt.BorderLayout.CENTER);
+        // ---- Folder tree ----
+        folderTreeModel = new DefaultTreeModel(
+                new JCheckBoxTreeNode("(no folder loaded)", false));
+        folderTree = new JCheckBoxTree(folderTreeModel);
 
+        // ---- Toggle panel ----
+        JRadioButton categoryBtn = new JRadioButton("Category View", true);
+        JRadioButton folderBtn   = new JRadioButton("Folder View");
+        ButtonGroup viewGroup = new ButtonGroup();
+        viewGroup.add(categoryBtn);
+        viewGroup.add(folderBtn);
+        JPanel togglePanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 2));
+        togglePanel.add(categoryBtn);
+        togglePanel.add(folderBtn);
+        add(togglePanel, java.awt.BorderLayout.NORTH);
+
+        // ---- Card panel ----
+        JScrollPane assetScrollPane = new JScrollPane(assetTree);
+        assetScrollPane.setPreferredSize(new java.awt.Dimension(200, 400));
+        JScrollPane folderScrollPane = new JScrollPane(folderTree);
+        folderScrollPane.setPreferredSize(new java.awt.Dimension(200, 400));
+        cardPanel = new JPanel(new java.awt.CardLayout());
+        cardPanel.add(assetScrollPane, "category");
+        cardPanel.add(folderScrollPane, "folder");
+        add(cardPanel, java.awt.BorderLayout.CENTER);
+
+        categoryBtn.addActionListener(e -> switchView(false));
+        folderBtn.addActionListener(e -> switchView(true));
+
+        // ---- Wire category tree ----
         setupExpandCollapseBehavior();
         setupLazyExpansion();
         assetTree.addTreeSelectionListener(e -> onTreeSelect());
-        // Text-click (no toggle) → still update the preview panel
         assetTree.setRowFocusCallback(this::notifyFocusedRowChange);
-
         assetTree.addCheckChangeEventListener(evt -> {
             Object nodeObj = evt.getSource();
             if (!(nodeObj instanceof JCheckBoxTreeNode node)) return;
             if (node.isLeaf()) {
-                TreeNodeData data = (TreeNodeData) node.getUserObject();
-                // Strip the category prefix (e.g. "BLP Files/" or "MDX Files/")
-                String rel = data.relativePath();
-                int slash = rel.indexOf('/');
-                if (slash >= 0) rel = rel.substring(slash + 1);
-                if (selectionListener != null) selectionListener.onAssetSelected(rel);
+                if (selectionListener != null && modelsFolder != null) {
+                    TreeNodeData data = (TreeNodeData) node.getUserObject();
+                    selectionListener.onAssetSelected(
+                            new File(modelsFolder, stripCategoryPrefix(data.relativePath())));
+                }
             } else {
-                if (folderListener != null) folderListener.onFolderSelected(collectTexturePathsUnder(node));
+                if (folderListener != null)
+                    folderListener.onFolderSelected(collectTextureFilesUnder(node));
             }
-            // Update ImportConfigPanel with currently selected MDX filenames
+            updateImportConfigPanel();
+        });
+
+        // ---- Wire folder tree ----
+        setupFolderTreeLazyExpansion();
+        folderTree.addTreeSelectionListener(e -> onFolderTreeSelect());
+        folderTree.setRowFocusCallback(this::notifyFolderTreeFocusedRowChange);
+        folderTree.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                int current  = folderTree.getFocusedRow();
+                int rowCount = folderTree.getRowCount();
+                if (e.getKeyCode() == KeyEvent.VK_UP) {
+                    if (rowCount > 0) {
+                        int next = current <= 0 ? 0 : current - 1;
+                        folderTree.setFocusedRow(next);
+                        notifyFolderTreeFocusedRowChange(next);
+                    }
+                    e.consume();
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    if (rowCount > 0) {
+                        int next = current < 0 ? 0 : Math.min(current + 1, rowCount - 1);
+                        folderTree.setFocusedRow(next);
+                        notifyFolderTreeFocusedRowChange(next);
+                    }
+                    e.consume();
+                }
+            }
+            @Override public void keyReleased(KeyEvent e) {}
+        });
+        folderTree.addCheckChangeEventListener(evt -> {
+            Object nodeObj = evt.getSource();
+            if (!(nodeObj instanceof JCheckBoxTreeNode node)) return;
+            if (!(node.getUserObject() instanceof FileNodeData fnd)) return;
+            File file = fnd.file();
+            if (file.isFile()) {
+                if (selectionListener != null) selectionListener.onAssetSelected(file);
+            } else {
+                if (folderListener != null)
+                    folderListener.onFolderSelected(collectTextureFilesFromFolderTreeNode(node));
+            }
             updateImportConfigPanel();
         });
     }
@@ -111,53 +195,49 @@ public class AssetTreePanel extends JPanel {
         this.modelsFolder = folder;
     }
 
-    public JTree getTree() {
-        return assetTree;
-    }
+    public JTree getTree() { return assetTree; }
 
     /**
-     * Rebuilds the tree from the given file lists.
+     * Rebuilds both trees from the discovered file lists.
      * Called after the user picks a models folder.
      */
     public void updateTree(List<String> mdxFiles, List<String> textureFiles,
                            Map<String, Long> fileSizes) {
+        // ---- Category tree ----
         pendingNodes.clear();
-        JCheckBoxTreeNode mdxNode = buildFolderTree(Messages.get("tree.mdx"), mdxFiles, fileSizes);
-        JCheckBoxTreeNode blpNode = buildFolderTree(Messages.get("tree.textures"), textureFiles, fileSizes);
+        JCheckBoxTreeNode mdxNode = buildCategoryTree(Messages.get("tree.mdx"), mdxFiles, fileSizes);
+        JCheckBoxTreeNode blpNode = buildCategoryTree(Messages.get("tree.textures"), textureFiles, fileSizes);
 
         TreeNodeData mdxData = (TreeNodeData) mdxNode.getUserObject();
         TreeNodeData blpData = (TreeNodeData) blpNode.getUserObject();
-        int totalFiles = mdxData.fileCount() + blpData.fileCount();
-        long totalSize = mdxData.sizeInBytes() + blpData.sizeInBytes();
-
         TreeNodeData rootData = new TreeNodeData(
-                Messages.get("tree.root"), false, "", totalSize, totalFiles);
-        JCheckBoxTreeNode root = new JCheckBoxTreeNode(rootData, false);
-        root.add(mdxNode);
-        root.add(blpNode);
-
-        treeModel.setRoot(root);
+                Messages.get("tree.root"), false, "",
+                mdxData.sizeInBytes() + blpData.sizeInBytes(),
+                mdxData.fileCount() + blpData.fileCount());
+        JCheckBoxTreeNode newRoot = new JCheckBoxTreeNode(rootData, false);
+        newRoot.add(mdxNode);
+        newRoot.add(blpNode);
+        treeModel.setRoot(newRoot);
         treeModel.reload();
         assetTree.resetCheckingState();
+
+        // ---- Folder tree ----
+        if (modelsFolder != null) rebuildFolderTree();
     }
 
     /**
-     * Returns absolute Paths for all checked leaf nodes (files) in the tree.
+     * Returns absolute Paths for all checked files in the currently active tree view.
      */
     public Set<Path> getCheckedFiles() {
+        if (isFolderTreeActive) return getCheckedFilesFromFolderTree();
         Set<Path> result = new LinkedHashSet<>();
         if (modelsFolder == null) return result;
-
-        TreeNode root = (TreeNode) treeModel.getRoot();
-        collectChecked(root, result);
+        collectChecked((TreeNode) treeModel.getRoot(), result);
         return result;
     }
 
-    /** Refreshes i18n labels. Called when the locale changes. */
+    /** Refreshes i18n labels on the category tree root. */
     public void applyI18n() {
-        // Rebuild the root label — a full tree rebuild with preserved checks is complex;
-        // since the folder hasn't changed, a simple updateTree re-read suffices if
-        // the folder is known. For the root-only label, update the root node directly.
         TreeNode root = (TreeNode) treeModel.getRoot();
         if (root instanceof JCheckBoxTreeNode cbRoot) {
             Object data = cbRoot.getUserObject();
@@ -171,7 +251,17 @@ public class AssetTreePanel extends JPanel {
     }
 
     // -------------------------------------------------------------------------
-    // Tree selection
+    // View toggle
+    // -------------------------------------------------------------------------
+
+    private void switchView(boolean folderView) {
+        isFolderTreeActive = folderView;
+        ((java.awt.CardLayout) cardPanel.getLayout()).show(cardPanel, folderView ? "folder" : "category");
+        updateImportConfigPanel();
+    }
+
+    // -------------------------------------------------------------------------
+    // Category tree — selection
     // -------------------------------------------------------------------------
 
     private void onTreeSelect() {
@@ -182,46 +272,53 @@ public class AssetTreePanel extends JPanel {
 
         StringBuilder sb = new StringBuilder();
         Object[] components = path.getPath();
-        // Skip root ("Model Assets") and category ("MDX Files (…)")
         for (int i = 2; i < components.length; i++) {
-            String part = components[i].toString().replaceAll("\\s*\\(.*?\\)$", "").trim();
-            sb.append(part);
+            sb.append(components[i].toString().replaceAll("\\s*\\(.*?\\)$", "").trim());
             if (i < components.length - 1) sb.append("/");
         }
-        if (selectionListener != null) selectionListener.onAssetSelected(sb.toString());
+        if (selectionListener != null && modelsFolder != null)
+            selectionListener.onAssetSelected(new File(modelsFolder, sb.toString()));
     }
 
-    /**
-     * Fires the appropriate selection callback for the node at the given tree row,
-     * used when keyboard focus moves via UP/DOWN arrow keys.
-     * <ul>
-     *   <li>Leaf nodes → {@link AssetSelectionListener#onAssetSelected}</li>
-     *   <li>Folder nodes → {@link FolderSelectionListener#onFolderSelected} with all texture files under it</li>
-     * </ul>
-     */
     private void notifyFocusedRowChange(int row) {
         TreePath tp = assetTree.getPathForRow(row);
         if (tp == null) return;
         Object last = tp.getLastPathComponent();
         if (!(last instanceof JCheckBoxTreeNode node)) return;
         if (node.isLeaf()) {
-            if (selectionListener == null) return;
+            if (selectionListener == null || modelsFolder == null) return;
             TreeNodeData data = (TreeNodeData) node.getUserObject();
-            String rel = data.relativePath();
-            int slash = rel.indexOf('/');
-            if (slash >= 0) rel = rel.substring(slash + 1);
-            selectionListener.onAssetSelected(rel);
+            selectionListener.onAssetSelected(
+                    new File(modelsFolder, stripCategoryPrefix(data.relativePath())));
         } else {
-            if (folderListener != null) folderListener.onFolderSelected(collectTexturePathsUnder(node));
+            if (folderListener != null)
+                folderListener.onFolderSelected(collectTextureFilesUnder(node));
         }
     }
 
+    private static String stripCategoryPrefix(String rel) {
+        int slash = rel.indexOf('/');
+        return slash >= 0 ? rel.substring(slash + 1) : rel;
+    }
+
+    /** Converts relative texture paths from the category tree to File objects. */
+    private List<File> collectTextureFilesUnder(JCheckBoxTreeNode node) {
+        if (modelsFolder == null) return List.of();
+        List<String> relPaths = collectTexturePathsUnder(node);
+        List<File> files = new ArrayList<>(relPaths.size());
+        for (String rel : relPaths) {
+            File f = new File(modelsFolder, rel);
+            if (f.exists()) files.add(f);
+        }
+        return files;
+    }
+
     // -------------------------------------------------------------------------
-    // Tree building
+    // Category tree — building
     // -------------------------------------------------------------------------
 
-    private JCheckBoxTreeNode buildFolderTree(String label, List<String> filePaths,
-                                               Map<String, Long> fileSizes) {
+    private JCheckBoxTreeNode buildCategoryTree(String label, List<String> filePaths,
+                                                 Map<String, Long> fileSizes) {
         FolderNode folderRoot = new FolderNode(label);
         for (String rel : filePaths) {
             String[] parts = rel.split("/");
@@ -246,14 +343,12 @@ public class AssetTreePanel extends JPanel {
                 fn.getName(), fn.isFile(), fullPath, fn.getTotalSize(), fn.getFileCount());
         JCheckBoxTreeNode node = new JCheckBoxTreeNode(data, false);
         if (!fn.isFile() && !fn.getChildren().isEmpty()) {
-            // Add a sentinel child so the expand arrow appears; real children are built on expand
             node.add(new JCheckBoxTreeNode(SENTINEL, false));
             pendingNodes.put(node, fn);
         }
         return node;
     }
 
-    /** Replaces the sentinel child of {@code parent} with its real children from {@code fn}. */
     private void materializeChildren(JCheckBoxTreeNode parent, FolderNode fn) {
         parent.removeAllChildren();
         String parentPath = ((TreeNodeData) parent.getUserObject()).relativePath();
@@ -263,123 +358,8 @@ public class AssetTreePanel extends JPanel {
         treeModel.reload(parent);
     }
 
-    private static boolean isSentinel(JCheckBoxTreeNode node) {
-        return SENTINEL.equals(node.getUserObject());
-    }
-
-    private void collectChecked(TreeNode treeNode, Set<Path> result) {
-        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
-        if (isSentinel(cbNode)) return;
-        if (cbNode.isLeaf() && cbNode.isChecked()) {
-            TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
-            if (data.isFile() && modelsFolder != null) {
-                // Strip the leading category prefix (e.g. "MDX Files/" or "BLP Files/")
-                String rel = data.relativePath();
-                int slash = rel.indexOf('/');
-                if (slash >= 0) rel = rel.substring(slash + 1);
-                result.add(modelsFolder.toPath().resolve(rel).normalize());
-            }
-            return;
-        }
-        // If this checked folder node was never expanded, its real children live only in
-        // the FolderNode hierarchy. Collect from there so we don't miss anything.
-        FolderNode pending = pendingNodes.get(cbNode);
-        if (pending != null) {
-            if (cbNode.isChecked()) {
-                TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
-                collectCheckedFromFolderNode(pending, data.relativePath(), result);
-            }
-            return;
-        }
-        for (int i = 0; i < treeNode.getChildCount(); i++) {
-            collectChecked(treeNode.getChildAt(i), result);
-        }
-    }
-
-    private void collectCheckedFromFolderNode(FolderNode fn, String currentPath, Set<Path> result) {
-        if (fn.isFile()) {
-            if (modelsFolder == null) return;
-            String rel = currentPath;
-            int slash = rel.indexOf('/');
-            if (slash >= 0) rel = rel.substring(slash + 1);
-            result.add(modelsFolder.toPath().resolve(rel).normalize());
-            return;
-        }
-        for (FolderNode child : fn.getChildren().values()) {
-            collectCheckedFromFolderNode(child, currentPath + "/" + child.getName(), result);
-        }
-    }
-
     // -------------------------------------------------------------------------
-    // Updating ImportConfigPanel with selected MDX filenames
-    // -------------------------------------------------------------------------
-
-    /**
-     * Collects all checked MDX filenames and updates the ImportConfigPanel preview.
-     * Called whenever a checkbox state changes in the tree.
-     */
-    private void updateImportConfigPanel() {
-        if (importConfigPanel == null) return;
-        List<String> mdxFilenames = collectCheckedMdxFilenames();
-        importConfigPanel.setSelectedMdxFilenames(mdxFilenames);
-    }
-
-    /**
-     * Collects the filenames (without extensions) of all checked MDX files in the tree.
-     * Returns just the filename part (e.g. "mymodel.mdx" not the full path).
-     */
-    private List<String> collectCheckedMdxFilenames() {
-        List<String> result = new ArrayList<>();
-        TreeNode root = (TreeNode) treeModel.getRoot();
-        collectMdxFilenamesRecursive(root, result);
-        return result;
-    }
-
-    /**
-     * Recursively collects checked MDX filenames from the tree.
-     */
-    private void collectMdxFilenamesRecursive(TreeNode treeNode, List<String> result) {
-        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
-        if (isSentinel(cbNode)) return;
-        if (cbNode.isLeaf() && cbNode.isChecked()) {
-            TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
-            if (data.isFile()) {
-                String rel = data.relativePath();
-                int slash = rel.indexOf('/');
-                if (slash >= 0) rel = rel.substring(slash + 1);
-                if (rel.toLowerCase().endsWith(".mdx")) result.add(rel);
-            }
-            return;
-        }
-        // Pending folder node: collect from FolderNode hierarchy directly.
-        FolderNode pending = pendingNodes.get(cbNode);
-        if (pending != null) {
-            if (cbNode.isChecked()) {
-                TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
-                collectMdxFromFolderNode(pending, data.relativePath(), result);
-            }
-            return;
-        }
-        for (int i = 0; i < treeNode.getChildCount(); i++) {
-            collectMdxFilenamesRecursive(treeNode.getChildAt(i), result);
-        }
-    }
-
-    private void collectMdxFromFolderNode(FolderNode fn, String currentPath, List<String> result) {
-        if (fn.isFile()) {
-            String rel = currentPath;
-            int slash = rel.indexOf('/');
-            if (slash >= 0) rel = rel.substring(slash + 1);
-            if (rel.toLowerCase().endsWith(".mdx")) result.add(rel);
-            return;
-        }
-        for (FolderNode child : fn.getChildren().values()) {
-            collectMdxFromFolderNode(child, currentPath + "/" + child.getName(), result);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Ctrl+click expand/collapse all
+    // Category tree — lazy expansion and Ctrl+expand
     // -------------------------------------------------------------------------
 
     private void setupLazyExpansion() {
@@ -391,19 +371,15 @@ public class AssetTreePanel extends JPanel {
                 FolderNode fn = pendingNodes.remove(parent);
                 if (fn != null) {
                     materializeChildren(parent, fn);
-                    // If the parent was checked before expansion, propagate that state to the
-                    // newly materialized children so they visually reflect the parent's check.
                     if (parent.isChecked()) {
                         for (int i = 0; i < parent.getChildCount(); i++) {
-                            TreePath childPath = event.getPath()
-                                    .pathByAddingChild(parent.getChildAt(i));
-                            assetTree.checkSubTree(childPath, true);
+                            assetTree.checkSubTree(
+                                    event.getPath().pathByAddingChild(parent.getChildAt(i)), true);
                         }
                     }
                 }
             }
-            @Override
-            public void treeWillCollapse(TreeExpansionEvent event) {}
+            @Override public void treeWillCollapse(TreeExpansionEvent event) {}
         });
     }
 
@@ -412,18 +388,18 @@ public class AssetTreePanel extends JPanel {
             @Override
             public void keyPressed(KeyEvent e) {
                 controlDown = e.isControlDown();
-                int current = assetTree.getFocusedRow();
+                int current  = assetTree.getFocusedRow();
                 int rowCount = assetTree.getRowCount();
                 if (e.getKeyCode() == KeyEvent.VK_UP) {
                     if (rowCount > 0) {
-                        int next = (current <= 0) ? 0 : current - 1;
+                        int next = current <= 0 ? 0 : current - 1;
                         assetTree.setFocusedRow(next);
                         notifyFocusedRowChange(next);
                     }
                     e.consume();
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
                     if (rowCount > 0) {
-                        int next = (current < 0) ? 0 : Math.min(current + 1, rowCount - 1);
+                        int next = current < 0 ? 0 : Math.min(current + 1, rowCount - 1);
                         assetTree.setFocusedRow(next);
                         notifyFocusedRowChange(next);
                     }
@@ -461,7 +437,6 @@ public class AssetTreePanel extends JPanel {
         Object last = path.getLastPathComponent();
         if (last instanceof JCheckBoxTreeNode cbNode) {
             if (isSentinel(cbNode)) return;
-            // Materialise lazy children before recursing so the full subtree is reachable
             FolderNode fn = pendingNodes.remove(cbNode);
             if (fn != null) materializeChildren(cbNode, fn);
         }
@@ -470,72 +445,400 @@ public class AssetTreePanel extends JPanel {
             expandAllChildren(path.pathByAddingChild(node.getChildAt(i)), expand);
         }
         if (expand) assetTree.expandPath(path);
-        else assetTree.collapsePath(path);
+        else        assetTree.collapsePath(path);
     }
 
-    /**
-     * Collects the relative paths (category prefix already stripped) of all
-     * texture leaf files that are descendants of {@code node}.
-     */
+    // -------------------------------------------------------------------------
+    // Category tree — collect checked / MDX / textures
+    // -------------------------------------------------------------------------
+
+    private void collectChecked(TreeNode treeNode, Set<Path> result) {
+        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
+        if (isSentinel(cbNode)) return;
+        if (cbNode.isLeaf() && cbNode.isChecked()) {
+            TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
+            if (data.isFile() && modelsFolder != null) {
+                result.add(modelsFolder.toPath()
+                        .resolve(stripCategoryPrefix(data.relativePath())).normalize());
+            }
+            return;
+        }
+        FolderNode pending = pendingNodes.get(cbNode);
+        if (pending != null) {
+            if (cbNode.isChecked()) {
+                collectCheckedFromFolderNode(
+                        pending, ((TreeNodeData) cbNode.getUserObject()).relativePath(), result);
+            }
+            return;
+        }
+        for (int i = 0; i < treeNode.getChildCount(); i++) collectChecked(treeNode.getChildAt(i), result);
+    }
+
+    private void collectCheckedFromFolderNode(FolderNode fn, String currentPath, Set<Path> result) {
+        if (fn.isFile()) {
+            if (modelsFolder == null) return;
+            result.add(modelsFolder.toPath().resolve(stripCategoryPrefix(currentPath)).normalize());
+            return;
+        }
+        for (FolderNode child : fn.getChildren().values())
+            collectCheckedFromFolderNode(child, currentPath + "/" + child.getName(), result);
+    }
+
+    private void updateImportConfigPanel() {
+        if (importConfigPanel == null) return;
+        List<String> mdxFilenames = isFolderTreeActive
+                ? collectMdxFilenamesFromFolderTree()
+                : collectCheckedMdxFilenames();
+        importConfigPanel.setSelectedMdxFilenames(mdxFilenames);
+    }
+
+    private List<String> collectCheckedMdxFilenames() {
+        List<String> result = new ArrayList<>();
+        collectMdxFilenamesRecursive((TreeNode) treeModel.getRoot(), result);
+        return result;
+    }
+
+    private void collectMdxFilenamesRecursive(TreeNode treeNode, List<String> result) {
+        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
+        if (isSentinel(cbNode)) return;
+        if (cbNode.isLeaf() && cbNode.isChecked()) {
+            TreeNodeData data = (TreeNodeData) cbNode.getUserObject();
+            if (data.isFile()) {
+                String rel = stripCategoryPrefix(data.relativePath());
+                if (rel.toLowerCase().endsWith(".mdx")) result.add(rel);
+            }
+            return;
+        }
+        FolderNode pending = pendingNodes.get(cbNode);
+        if (pending != null) {
+            if (cbNode.isChecked())
+                collectMdxFromFolderNode(pending, ((TreeNodeData) cbNode.getUserObject()).relativePath(), result);
+            return;
+        }
+        for (int i = 0; i < treeNode.getChildCount(); i++)
+            collectMdxFilenamesRecursive(treeNode.getChildAt(i), result);
+    }
+
+    private void collectMdxFromFolderNode(FolderNode fn, String currentPath, List<String> result) {
+        if (fn.isFile()) {
+            String rel = stripCategoryPrefix(currentPath);
+            if (rel.toLowerCase().endsWith(".mdx")) result.add(rel);
+            return;
+        }
+        for (FolderNode child : fn.getChildren().values())
+            collectMdxFromFolderNode(child, currentPath + "/" + child.getName(), result);
+    }
+
     private List<String> collectTexturePathsUnder(JCheckBoxTreeNode node) {
         List<String> result = new ArrayList<>();
         collectTexturePathsRecursive(node, result);
         return result;
     }
 
-    private static final java.util.Set<String> TEXTURE_EXTENSIONS = new java.util.HashSet<>(
-            java.util.Arrays.asList(".blp", ".dds", ".tga", ".png", ".jpg", ".jpeg", ".bmp", ".gif"));
+    private static final Set<String> TEXTURE_EXTENSIONS = new java.util.HashSet<>(
+            Arrays.asList(".blp", ".dds", ".tga", ".png", ".jpg", ".jpeg", ".bmp", ".gif"));
 
     private void collectTexturePathsRecursive(JCheckBoxTreeNode node, List<String> result) {
         if (isSentinel(node)) return;
         if (node.isLeaf()) {
             TreeNodeData data = (TreeNodeData) node.getUserObject();
             if (data.isFile()) {
-                String rel = data.relativePath();
-                int slash = rel.indexOf('/');
-                if (slash >= 0) rel = rel.substring(slash + 1);
+                String rel = stripCategoryPrefix(data.relativePath());
                 int dot = rel.lastIndexOf('.');
-                if (dot >= 0 && TEXTURE_EXTENSIONS.contains(rel.substring(dot).toLowerCase())) {
+                if (dot >= 0 && TEXTURE_EXTENSIONS.contains(rel.substring(dot).toLowerCase()))
                     result.add(rel);
-                }
             }
             return;
         }
-        // Node not yet expanded — its real children live only in the FolderNode hierarchy.
-        // Traverse that directly so we don't hit the dead-end sentinel child.
         FolderNode pending = pendingNodes.get(node);
         if (pending != null) {
-            TreeNodeData data = (TreeNodeData) node.getUserObject();
-            collectTexturePathsFromFolderNode(pending, data.relativePath(), result);
+            collectTexturePathsFromFolderNode(
+                    pending, ((TreeNodeData) node.getUserObject()).relativePath(), result);
             return;
         }
         for (int i = 0; i < node.getChildCount(); i++) {
             Object child = node.getChildAt(i);
-            if (child instanceof JCheckBoxTreeNode cb) {
-                collectTexturePathsRecursive(cb, result);
+            if (child instanceof JCheckBoxTreeNode cb) collectTexturePathsRecursive(cb, result);
+        }
+    }
+
+    private void collectTexturePathsFromFolderNode(FolderNode fn, String currentPath, List<String> result) {
+        if (fn.isFile()) {
+            String rel = stripCategoryPrefix(currentPath);
+            int dot = rel.lastIndexOf('.');
+            if (dot >= 0 && TEXTURE_EXTENSIONS.contains(rel.substring(dot).toLowerCase()))
+                result.add(rel);
+            return;
+        }
+        for (FolderNode child : fn.getChildren().values())
+            collectTexturePathsFromFolderNode(child, currentPath + "/" + child.getName(), result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Filesystem (folder) tree
+    // -------------------------------------------------------------------------
+
+    /** Node user-object for the folder tree: displays name, file count and size. */
+    private record FileNodeData(File file, int fileCount, long totalSize) {
+        @Override public String toString() {
+            if (file.isDirectory()) {
+                return file.getName() + " (" + fileCount + " files, " + formatSize(totalSize) + ")";
+            }
+            return file.getName() + " [" + formatSize(totalSize) + "]";
+        }
+        private static String formatSize(long size) {
+            if (size >= 1 << 20) return String.format("%.1f MB", size / 1024.0 / 1024);
+            if (size >= 1 << 10) return String.format("%.1f KB", size / 1024.0);
+            return size + " B";
+        }
+    }
+
+    /** Recursively counts files and sums sizes under {@code dir}. Returns {fileCount, totalSize}. */
+    private static long[] computeDirStats(File dir) {
+        long count = 0, size = 0;
+        File[] children = dir.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                if (child.isFile()) {
+                    count++;
+                    size += child.length();
+                } else if (child.isDirectory()) {
+                    long[] sub = computeDirStats(child);
+                    count += sub[0];
+                    size += sub[1];
+                }
+            }
+        }
+        return new long[]{count, size};
+    }
+
+    private void rebuildFolderTree() {
+        pendingFolderDirs.clear();
+        // Materialize root's children immediately — JTree auto-expands the root via
+        // expandedState (bypassing TreeWillExpandListener), so any sentinel on the root
+        // would become visible without being replaced.  Subdirectories still use lazy expansion.
+        long[] rootStats = computeDirStats(modelsFolder);
+        JCheckBoxTreeNode root = new JCheckBoxTreeNode(
+                new FileNodeData(modelsFolder, (int) rootStats[0], rootStats[1]), false);
+        File[] children = modelsFolder.listFiles();
+        if (children != null) {
+            Arrays.sort(children, (a, b) -> {
+                if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            });
+            for (File child : children) root.add(buildFolderTreeNode(child));
+        }
+        folderTreeModel.setRoot(root);
+        folderTreeModel.reload();
+        folderTree.resetCheckingState();
+    }
+
+    private JCheckBoxTreeNode buildFolderTreeNode(File file) {
+        FileNodeData data;
+        if (file.isDirectory()) {
+            long[] stats = computeDirStats(file);
+            data = new FileNodeData(file, (int) stats[0], stats[1]);
+        } else {
+            data = new FileNodeData(file, 0, file.length());
+        }
+        JCheckBoxTreeNode node = new JCheckBoxTreeNode(data, false);
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null && children.length > 0) {
+                node.add(new JCheckBoxTreeNode(SENTINEL, false));
+                pendingFolderDirs.put(node, file);
+            }
+        }
+        return node;
+    }
+
+    private void materializeFolderChildren(JCheckBoxTreeNode parent, File dir) {
+        parent.removeAllChildren();
+        File[] children = dir.listFiles();
+        if (children != null) {
+            Arrays.sort(children, (a, b) -> {
+                if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            });
+            for (File child : children) parent.add(buildFolderTreeNode(child));
+        }
+        folderTreeModel.reload(parent);
+    }
+
+    private void setupFolderTreeLazyExpansion() {
+        folderTree.addTreeWillExpandListener(new TreeWillExpandListener() {
+            @Override
+            public void treeWillExpand(TreeExpansionEvent event) throws ExpandVetoException {
+                Object last = event.getPath().getLastPathComponent();
+                if (!(last instanceof JCheckBoxTreeNode parent)) return;
+                File dir = pendingFolderDirs.remove(parent);
+                if (dir != null) {
+                    materializeFolderChildren(parent, dir);
+                    if (parent.isChecked()) {
+                        for (int i = 0; i < parent.getChildCount(); i++) {
+                            folderTree.checkSubTree(
+                                    event.getPath().pathByAddingChild(parent.getChildAt(i)), true);
+                        }
+                    }
+                }
+            }
+            @Override public void treeWillCollapse(TreeExpansionEvent event) {}
+        });
+    }
+
+    private void onFolderTreeSelect() {
+        TreePath path = folderTree.getSelectionPath();
+        if (path == null) return;
+        Object last = path.getLastPathComponent();
+        if (!(last instanceof JCheckBoxTreeNode node)) return;
+        if (!(node.getUserObject() instanceof FileNodeData fnd)) return;
+        File file = fnd.file();
+        if (file.isFile() && selectionListener != null)
+            selectionListener.onAssetSelected(file);
+    }
+
+    private void notifyFolderTreeFocusedRowChange(int row) {
+        TreePath tp = folderTree.getPathForRow(row);
+        if (tp == null) return;
+        Object last = tp.getLastPathComponent();
+        if (!(last instanceof JCheckBoxTreeNode node)) return;
+        if (!(node.getUserObject() instanceof FileNodeData fnd)) return;
+        File file = fnd.file();
+        if (file.isFile()) {
+            if (selectionListener != null) selectionListener.onAssetSelected(file);
+        } else {
+            if (folderListener != null)
+                folderListener.onFolderSelected(collectTextureFilesFromFolderTreeNode(node));
+        }
+    }
+
+    // ---- Folder tree — texture collection ----
+
+    private List<File> collectTextureFilesFromFolderTreeNode(JCheckBoxTreeNode node) {
+        List<File> result = new ArrayList<>();
+        collectTextureFilesFromFolderTree(node, result);
+        return result;
+    }
+
+    private void collectTextureFilesFromFolderTree(JCheckBoxTreeNode node, List<File> result) {
+        if (isSentinel(node)) return;
+        if (!(node.getUserObject() instanceof FileNodeData fnd)) return;
+        File file = fnd.file();
+        if (file.isFile()) {
+            int dot = file.getName().lastIndexOf('.');
+            if (dot >= 0 && TEXTURE_EXTENSIONS.contains(file.getName().substring(dot).toLowerCase()))
+                result.add(file);
+            return;
+        }
+        File pendingDir = pendingFolderDirs.get(node);
+        if (pendingDir != null) {
+            collectTextureFilesFromDir(pendingDir, result);
+            return;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            Object child = node.getChildAt(i);
+            if (child instanceof JCheckBoxTreeNode cb)
+                collectTextureFilesFromFolderTree(cb, result);
+        }
+    }
+
+    private void collectTextureFilesFromDir(File dir, List<File> result) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (child.isFile()) {
+                int dot = child.getName().lastIndexOf('.');
+                if (dot >= 0 && TEXTURE_EXTENSIONS.contains(child.getName().substring(dot).toLowerCase()))
+                    result.add(child);
+            } else if (child.isDirectory()) {
+                collectTextureFilesFromDir(child, result);
             }
         }
     }
 
-    private void collectTexturePathsFromFolderNode(FolderNode fn, String currentPath,
-                                                    List<String> result) {
-        if (fn.isFile()) {
-            String rel = currentPath;
-            int slash = rel.indexOf('/');
-            if (slash >= 0) rel = rel.substring(slash + 1);
-            int dot = rel.lastIndexOf('.');
-            if (dot >= 0 && TEXTURE_EXTENSIONS.contains(rel.substring(dot).toLowerCase())) {
-                result.add(rel);
-            }
+    // ---- Folder tree — checked files ----
+
+    private Set<Path> getCheckedFilesFromFolderTree() {
+        Set<Path> result = new LinkedHashSet<>();
+        collectCheckedFolderTree((TreeNode) folderTreeModel.getRoot(), result);
+        return result;
+    }
+
+    private void collectCheckedFolderTree(TreeNode treeNode, Set<Path> result) {
+        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
+        if (isSentinel(cbNode)) return;
+        if (!(cbNode.getUserObject() instanceof FileNodeData fnd)) return;
+        File file = fnd.file();
+        if (file.isFile()) {
+            if (cbNode.isChecked()) result.add(file.toPath().normalize());
             return;
         }
-        for (FolderNode child : fn.getChildren().values()) {
-            collectTexturePathsFromFolderNode(child, currentPath + "/" + child.getName(), result);
+        File pendingDir = pendingFolderDirs.get(cbNode);
+        if (pendingDir != null) {
+            if (cbNode.isChecked()) collectAllFilesFromDir(pendingDir, result);
+            return;
+        }
+        for (int i = 0; i < treeNode.getChildCount(); i++)
+            collectCheckedFolderTree(treeNode.getChildAt(i), result);
+    }
+
+    private void collectAllFilesFromDir(File dir, Set<Path> result) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (child.isFile())            result.add(child.toPath().normalize());
+            else if (child.isDirectory()) collectAllFilesFromDir(child, result);
+        }
+    }
+
+    // ---- Folder tree — MDX filenames for naming preview ----
+
+    private List<String> collectMdxFilenamesFromFolderTree() {
+        List<String> result = new ArrayList<>();
+        collectMdxFolderTree((TreeNode) folderTreeModel.getRoot(), result);
+        return result;
+    }
+
+    private void collectMdxFolderTree(TreeNode treeNode, List<String> result) {
+        if (!(treeNode instanceof JCheckBoxTreeNode cbNode)) return;
+        if (isSentinel(cbNode)) return;
+        if (!(cbNode.getUserObject() instanceof FileNodeData fnd)) return;
+        File file = fnd.file();
+        if (file.isFile()) {
+            if (cbNode.isChecked() && file.getName().toLowerCase().endsWith(".mdx"))
+                result.add(file.getName());
+            return;
+        }
+        File pendingDir = pendingFolderDirs.get(cbNode);
+        if (pendingDir != null) {
+            if (cbNode.isChecked()) collectAllMdxFromDir(pendingDir, result);
+            return;
+        }
+        for (int i = 0; i < treeNode.getChildCount(); i++)
+            collectMdxFolderTree(treeNode.getChildAt(i), result);
+    }
+
+    private void collectAllMdxFromDir(File dir, List<String> result) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (child.isFile() && child.getName().toLowerCase().endsWith(".mdx"))
+                result.add(child.getName());
+            else if (child.isDirectory())
+                collectAllMdxFromDir(child, result);
         }
     }
 
     // -------------------------------------------------------------------------
-    // FolderNode — internal tree building helper
+    // Shared helpers
+    // -------------------------------------------------------------------------
+
+    private static boolean isSentinel(JCheckBoxTreeNode node) {
+        return SENTINEL.equals(node.getUserObject());
+    }
+
+    // -------------------------------------------------------------------------
+    // FolderNode — category tree building helper
     // -------------------------------------------------------------------------
 
     private static class FolderNode {
@@ -552,13 +855,13 @@ public class AssetTreePanel extends JPanel {
             return children.computeIfAbsent(name, n -> new FolderNode(n, leaf));
         }
 
-        String getName() { return name; }
-        boolean isFile() { return isFile; }
-        int getFileCount() { return fileCount; }
-        long getTotalSize() { return totalSize; }
+        String getName()  { return name; }
+        boolean isFile()  { return isFile; }
+        int getFileCount(){ return fileCount; }
+        long getTotalSize(){ return totalSize; }
         Map<String, FolderNode> getChildren() { return children; }
         void incrementFileCount() { fileCount++; }
-        void addSize(long size) { totalSize += size; }
+        void addSize(long size)   { totalSize += size; }
 
         int recalculateCountsAndSizes() {
             if (isFile) return fileCount;
