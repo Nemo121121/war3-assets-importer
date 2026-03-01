@@ -24,6 +24,7 @@ import systems.crigges.jmpq3.MPQOpenOption;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -49,6 +50,12 @@ import java.util.stream.Collectors;
 public class ImportService {
 
     private static final Logger LOG = Logger.getLogger(ImportService.class.getName());
+
+    // Markers used to bracket the generated JASS block so re-imports replace it in place
+    private static final String JASS_SECTION_BEGIN   = "// === War3AssetsImporter BEGIN ===";
+    private static final String JASS_SECTION_END     = "// === War3AssetsImporter END ===";
+    private static final String JASS_FUNCTION_NAME   = "CreateImportedAssetUnits";
+    private static final String JASS_FUNCTION_CALL   = "call " + JASS_FUNCTION_NAME + "()";
 
     /**
      * Runs a full import operation.
@@ -235,6 +242,7 @@ public class ImportService {
 
         int total = selectedFiles.size();
         int[] done = {0};
+        List<UnitPlacement> jassUnitPlacements = new ArrayList<>();
 
         for (Path absolutePath : selectedFiles) {
             File f = absolutePath.toFile();
@@ -303,22 +311,34 @@ public class ImportService {
 
                     existingModelPaths.add(modelPath);
 
-                    if (options.getPlaceUnits() && placer != null && !dooUnitsParseFailed) {
+                    if (options.getPlaceUnits() && placer != null) {
                         Coords2DF coords = placer.nextPosition();
                         if (coords != null) {
-                            DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
-                            dooUnitObj.setTypeId(newId);
-                            dooUnitObj.setSkinId(newId);
-                            dooUnitObj.setPos(new Coords3DF(coords.getX().getVal(), coords.getY().getVal(), 0));
-                            dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
-                            dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
-                            dooUnitObj.setLifePerc(-1);  // -1 = use unit's default max health
-                            dooUnitObj.setManaPerc(-1);  // -1 = use unit's default max mana
-                            log.accept("Placed unit at: " + coords.getX().getVal() + ", " + coords.getY().getVal());
+                            float cx = coords.getX().getVal();
+                            float cy = coords.getY().getVal();
+                            if (!dooUnitsParseFailed) {
+                                DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
+                                dooUnitObj.setTypeId(newId);
+                                dooUnitObj.setSkinId(newId);
+                                dooUnitObj.setPos(new Coords3DF(cx, cy, 0));
+                                dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                                dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
+                                dooUnitObj.setLifePerc(-1);
+                                dooUnitObj.setManaPerc(-1);
+                            }
+                            jassUnitPlacements.add(new UnitPlacement(idString, cx, cy, options.getUnitAngle()));
+                            log.accept("Placed unit at: " + cx + ", " + cy);
                         }
                     }
                 }
             }
+        }
+
+        // Update war3map.j with BlzCreateUnitWithSkin calls when units are placed,
+        // or clear the section when clearUnits is requested.
+        if ((options.getCreateUnits() && options.getPlaceUnits()) || options.getClearUnits()) {
+            List<UnitPlacement> scriptPlacements = options.getClearUnits() ? List.of() : jassUnitPlacements;
+            updateWarcraft3Script(mpq, scriptPlacements, log);
         }
 
         // Write all modified structures back to MPQ
@@ -404,4 +424,95 @@ public class ImportService {
         }
         return baos.toByteArray();
     }
+
+    // -------------------------------------------------------------------------
+    // war3map.j injection
+    // -------------------------------------------------------------------------
+
+    /**
+     * Reads {@code war3map.j} from the MPQ, injects (or replaces) the
+     * {@value #JASS_FUNCTION_NAME} block delimited by {@link #JASS_SECTION_BEGIN} /
+     * {@link #JASS_SECTION_END} markers, ensures the function is called from
+     * {@code main}, and writes the result back.
+     */
+    private static void updateWarcraft3Script(JMpqEditor mpq,
+                                               List<UnitPlacement> placements,
+                                               Consumer<String> log) {
+        if (!mpq.hasFile("war3map.j")) {
+            log.accept("Warning: war3map.j not found in map — cannot inject unit creation calls.");
+            return;
+        }
+        try {
+            String script = new String(mpq.extractFileAsBytes("war3map.j"), StandardCharsets.UTF_8);
+
+            // Build the new function block
+            String block = buildJassFunctionBlock(placements);
+
+            // Replace existing section or inject before `function main`
+            if (script.contains(JASS_SECTION_BEGIN)) {
+                int start = script.indexOf(JASS_SECTION_BEGIN);
+                int end   = script.indexOf(JASS_SECTION_END, start);
+                if (end != -1) {
+                    end += JASS_SECTION_END.length();
+                    if (end < script.length() && script.charAt(end) == '\n') end++;
+                    script = script.substring(0, start) + block + script.substring(end);
+                }
+            } else {
+                // First import: find `function main` and insert just before it
+                int mainIdx = script.indexOf("\nfunction main ");
+                if (mainIdx == -1) mainIdx = script.indexOf("\nfunction main\t");
+                if (mainIdx != -1) {
+                    script = script.substring(0, mainIdx + 1) + block + "\n"
+                            + script.substring(mainIdx + 1);
+                } else {
+                    script = script + "\n" + block;
+                }
+            }
+
+            // Ensure the function is called — insert after `call CreateAllUnits`
+            if (!script.contains(JASS_FUNCTION_CALL)) {
+                int idx = script.indexOf("call CreateAllUnits");
+                if (idx != -1) {
+                    int lineEnd = script.indexOf('\n', idx);
+                    if (lineEnd == -1) lineEnd = script.length() - 1;
+                    script = script.substring(0, lineEnd + 1)
+                            + "    " + JASS_FUNCTION_CALL + "\n"
+                            + script.substring(lineEnd + 1);
+                } else {
+                    log.accept("Warning: 'call CreateAllUnits' not found in war3map.j — "
+                            + "add 'call " + JASS_FUNCTION_NAME + "()' to main manually.");
+                }
+            }
+
+            byte[] bytes = script.getBytes(StandardCharsets.UTF_8);
+            mpq.deleteFile("war3map.j");
+            mpq.insertByteArray("war3map.j", bytes);
+            log.accept("Updated war3map.j with " + placements.size()
+                    + " BlzCreateUnitWithSkin call(s).");
+        } catch (Exception ex) {
+            LOG.log(Level.WARNING, "Failed to update war3map.j", ex);
+            log.accept("Warning: could not update war3map.j — " + ex.getMessage());
+        }
+    }
+
+    /** Generates the JASS function block wrapped in section markers. */
+    private static String buildJassFunctionBlock(List<UnitPlacement> placements) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(JASS_SECTION_BEGIN).append("\n");
+        sb.append("function ").append(JASS_FUNCTION_NAME).append(" takes nothing returns nothing\n");
+        if (!placements.isEmpty()) {
+            sb.append("    local player p = Player(0)\n");
+            sb.append("    local unit u\n");
+            for (UnitPlacement pl : placements) {
+                sb.append(String.format(
+                        "    set u = BlzCreateUnitWithSkin( p, '%s', %.3f, %.3f, %.3f, '%s' )\n",
+                        pl.id(), pl.x(), pl.y(), pl.angle(), pl.id()));
+            }
+        }
+        sb.append("endfunction\n");
+        sb.append(JASS_SECTION_END).append("\n");
+        return sb.toString();
+    }
+
+    private record UnitPlacement(String id, float x, float y, float angle) {}
 }
