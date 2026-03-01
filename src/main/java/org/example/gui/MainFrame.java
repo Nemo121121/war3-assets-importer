@@ -64,6 +64,10 @@ public class MainFrame {
     private AssetDiscoveryResult discoveredAssets;
     private SwingWorker<AssetDiscoveryResult, Void> discoveryWorker;
 
+    // ---- Last-used directories for file choosers ----
+    private File lastMapDir     = new File("src/test-sample");
+    private File lastModelsDir  = new File("src/test-sample");
+
     // ---- Swing components ----
     private JFrame frame;
     private JTextArea logArea;
@@ -253,11 +257,12 @@ public class MainFrame {
     }
 
     private void onOpenMap(ActionEvent e) {
-        JFileChooser chooser = new JFileChooser(new File("src/test-sample"));
+        JFileChooser chooser = new JFileChooser(lastMapDir);
         chooser.setDialogTitle(Messages.get("dialog.openMap"));
         if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
 
         mapFile = chooser.getSelectedFile();
+        lastMapDir = mapFile.getParentFile();
         LOG.info("Opening map: " + mapFile.getAbsolutePath());
         log(MessageFormat.format(Messages.get("log.selectedMap"), mapFile.getAbsolutePath()));
         importConfigPanel.setOutputPath(defaultOutputPath(mapFile));
@@ -332,7 +337,7 @@ public class MainFrame {
     }
 
     private void onImportModels(ActionEvent e) {
-        JFileChooser chooser = new JFileChooser(new File("src/test-sample"));
+        JFileChooser chooser = new JFileChooser(lastModelsDir);
         chooser.setDialogTitle(Messages.get("dialog.importFolder"));
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
@@ -341,6 +346,7 @@ public class MainFrame {
         if (discoveryWorker != null && !discoveryWorker.isDone()) discoveryWorker.cancel(true);
 
         modelsFolder = chooser.getSelectedFile();
+        lastModelsDir = modelsFolder.getParentFile();
         LOG.info("Scanning assets folder: " + modelsFolder.getAbsolutePath());
         assetTreePanel.setModelsFolder(modelsFolder);
         log(MessageFormat.format(Messages.get("log.selectedFolder"), modelsFolder.getAbsolutePath()));
