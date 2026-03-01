@@ -49,7 +49,7 @@ src/main/java/org/example/
 
 ## Architecture
 
-**UI flow:** `MainFrame` hosts a horizontal split between `MapOptionsPanel` (left) and a vertical split of `AssetTreePanel` + `PreviewPanel` (right).
+**UI flow:** `MainFrame` hosts a horizontal split between `MapOpin tionsPanel` (left) and a vertical split of `AssetTreePanel` + `PreviewPanel` (right).
 
 **Processing flow:**
 1. User opens a `.w3x` map → `MainFrame` loads metadata via `Wc3MapAssetImporter`
