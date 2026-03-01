@@ -1,10 +1,10 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
-import org.example.core.model.ExistingUnit;
-import org.example.core.model.ImportOptions;
-import org.example.core.model.UnitEntry;
-import org.example.core.util.CameraBounds;
-import org.example.gui.i18n.Messages;
+import com.hiveworkshop.core.model.ExistingUnit;
+import com.hiveworkshop.core.model.ImportOptions;
+import com.hiveworkshop.core.model.UnitEntry;
+import com.hiveworkshop.core.util.CameraBounds;
+import com.hiveworkshop.gui.i18n.Messages;
 
 import javax.swing.*;
 import java.awt.*;

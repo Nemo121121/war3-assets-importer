@@ -1,6 +1,6 @@
-package org.example.core.model;
+package com.hiveworkshop.core.model;
 
-import org.example.core.util.CameraBounds;
+import com.hiveworkshop.core.util.CameraBounds;
 
 public final class MapMetadata {
     private final String name;

@@ -1,6 +1,6 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
-import org.example.core.model.UnitEntry;
+import com.hiveworkshop.core.model.UnitEntry;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;

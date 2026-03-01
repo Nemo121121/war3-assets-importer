@@ -1,4 +1,4 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
 import javax.swing.tree.DefaultMutableTreeNode;
 

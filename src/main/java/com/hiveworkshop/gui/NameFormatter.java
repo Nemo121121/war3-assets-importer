@@ -1,4 +1,4 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

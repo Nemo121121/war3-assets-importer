@@ -1,4 +1,4 @@
-package org.example.core.model;
+package com.hiveworkshop.core.model;
 
 /**
  * A single unit placement read from {@code war3mapUnits.doo}, already converted

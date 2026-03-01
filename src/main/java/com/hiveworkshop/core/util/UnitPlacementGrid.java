@@ -1,7 +1,7 @@
-package org.example.core.util;
+package com.hiveworkshop.core.util;
 
 import net.moonlightflower.wc3libs.dataTypes.app.Coords2DF;
-import org.example.core.model.ImportOptions;
+import com.hiveworkshop.core.model.ImportOptions;
 
 import java.util.logging.Logger;
 

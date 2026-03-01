@@ -1,4 +1,4 @@
-package org.example.gui.i18n;
+package com.hiveworkshop.gui.i18n;
 
 import java.util.Locale;
 import java.util.MissingResourceException;

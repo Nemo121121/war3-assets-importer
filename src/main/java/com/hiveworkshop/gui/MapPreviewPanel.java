@@ -1,7 +1,7 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
-import org.example.core.model.ExistingUnit;
-import org.example.gui.i18n.Messages;
+import com.hiveworkshop.core.model.ExistingUnit;
+import com.hiveworkshop.gui.i18n.Messages;
 
 import javax.swing.*;
 import java.awt.*;

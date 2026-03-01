@@ -1,8 +1,8 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
-import org.example.core.model.ImportOptions;
-import org.example.core.model.ImportResult;
-import org.example.core.service.ImportService;
+import com.hiveworkshop.core.model.ImportOptions;
+import com.hiveworkshop.core.model.ImportResult;
+import com.hiveworkshop.core.service.ImportService;
 
 import javax.swing.*;
 import java.awt.*;

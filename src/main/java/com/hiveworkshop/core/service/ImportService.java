@@ -1,4 +1,4 @@
-package org.example.core.service;
+package com.hiveworkshop.core.service;
 
 import net.moonlightflower.wc3libs.bin.ObjMod;
 import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
@@ -12,12 +12,12 @@ import net.moonlightflower.wc3libs.dataTypes.app.War3Real;
 import net.moonlightflower.wc3libs.dataTypes.app.War3String;
 import net.moonlightflower.wc3libs.misc.MetaFieldId;
 import net.moonlightflower.wc3libs.misc.ObjId;
-import org.example.core.model.ImportOptions;
-import org.example.core.model.ImportResult;
-import org.example.core.util.CameraBounds;
-import org.example.core.util.UnitIDGenerator;
-import org.example.core.util.UnitPlacementGrid;
-import org.example.gui.NameFormatter;
+import com.hiveworkshop.core.model.ImportOptions;
+import com.hiveworkshop.core.model.ImportResult;
+import com.hiveworkshop.core.util.CameraBounds;
+import com.hiveworkshop.core.util.UnitIDGenerator;
+import com.hiveworkshop.core.util.UnitPlacementGrid;
+import com.hiveworkshop.gui.NameFormatter;
 import systems.crigges.jmpq3.JMpqEditor;
 import systems.crigges.jmpq3.MPQOpenOption;
 

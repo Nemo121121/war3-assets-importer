@@ -1,4 +1,4 @@
-package org.example.core.util;
+package com.hiveworkshop.core.util;
 
 import java.util.Set;
 import java.util.logging.Logger;

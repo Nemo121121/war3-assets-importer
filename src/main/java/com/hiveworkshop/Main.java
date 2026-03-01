@@ -1,12 +1,12 @@
-package org.example;
+package com.hiveworkshop;
 
 import com.hiveworkshop.blizzard.blp.BLPReaderSpi;
 import com.hiveworkshop.blizzard.blp.BLPWriterSpi;
 import net.nikr.dds.DDSImageReaderSpi;
-import org.example.cli.ImportCommand;
-import org.example.gui.MainFrame;
-import org.example.gui.i18n.Messages;
-import org.example.gui.settings.AppearanceConfig;
+import com.hiveworkshop.cli.ImportCommand;
+import com.hiveworkshop.gui.MainFrame;
+import com.hiveworkshop.gui.i18n.Messages;
+import com.hiveworkshop.gui.settings.AppearanceConfig;
 
 import javax.imageio.spi.IIORegistry;
 import javax.swing.*;

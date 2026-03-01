@@ -1,6 +1,6 @@
-package org.example.core.service;
+package com.hiveworkshop.core.service;
 
-import org.example.core.model.AssetDiscoveryResult;
+import com.hiveworkshop.core.model.AssetDiscoveryResult;
 
 import java.io.File;
 import java.io.IOException;

@@ -1,16 +1,16 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
-import org.example.core.model.AssetDiscoveryResult;
-import org.example.core.model.ImportOptions;
-import org.example.gui.MapPreviewPanel;
-import org.example.core.model.MapMetadata;
-import org.example.core.model.UnitEntry;
-import org.example.core.service.AssetDiscoveryService;
-import org.example.core.service.ImportService;
-import org.example.core.service.MapMetadataService;
-import org.example.gui.i18n.Messages;
-import org.example.gui.settings.AppearanceConfig;
-import org.example.gui.settings.SettingsDialog;
+import com.hiveworkshop.core.model.AssetDiscoveryResult;
+import com.hiveworkshop.core.model.ImportOptions;
+import com.hiveworkshop.gui.MapPreviewPanel;
+import com.hiveworkshop.core.model.MapMetadata;
+import com.hiveworkshop.core.model.UnitEntry;
+import com.hiveworkshop.core.service.AssetDiscoveryService;
+import com.hiveworkshop.core.service.ImportService;
+import com.hiveworkshop.core.service.MapMetadataService;
+import com.hiveworkshop.gui.i18n.Messages;
+import com.hiveworkshop.gui.settings.AppearanceConfig;
+import com.hiveworkshop.gui.settings.SettingsDialog;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -288,7 +288,7 @@ public class MainFrame {
 
         // Load existing unit placements from war3mapUnits.doo and show them as
         // yellow triangles on the Import Configuration map preview.
-        java.util.List<org.example.core.model.ExistingUnit> existingUnits =
+        java.util.List<com.hiveworkshop.core.model.ExistingUnit> existingUnits =
                 metadataService.loadExistingUnitPlacements(mapFile);
         importConfigPanel.setExistingUnits(existingUnits);
         if (!existingUnits.isEmpty()) {

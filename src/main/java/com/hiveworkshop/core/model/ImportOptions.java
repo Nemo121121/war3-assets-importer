@@ -1,4 +1,4 @@
-package org.example.core.model;
+package com.hiveworkshop.core.model;
 
 public final class ImportOptions {
 

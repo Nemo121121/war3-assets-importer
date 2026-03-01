@@ -1,10 +1,10 @@
-package org.example.cli;
+package com.hiveworkshop.cli;
 
-import org.example.core.model.AssetDiscoveryResult;
-import org.example.core.model.ImportOptions;
-import org.example.core.model.ImportResult;
-import org.example.core.service.AssetDiscoveryService;
-import org.example.core.service.ImportService;
+import com.hiveworkshop.core.model.AssetDiscoveryResult;
+import com.hiveworkshop.core.model.ImportOptions;
+import com.hiveworkshop.core.model.ImportResult;
+import com.hiveworkshop.core.service.AssetDiscoveryService;
+import com.hiveworkshop.core.service.ImportService;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -132,7 +132,7 @@ public class ImportCommand implements Callable<Integer> {
         return result.success() ? 0 : 1;
     }
 
-    /** Called from {@link org.example.Main} when args are present. */
+    /** Called from {@link com.hiveworkshop.Main} when args are present. */
     public static int run(String[] args) {
         LOG.fine("CLI invoked with " + args.length + " argument(s)");
         return new CommandLine(new ImportCommand()).execute(args);

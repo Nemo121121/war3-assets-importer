@@ -1,4 +1,4 @@
-package org.example.core.service;
+package com.hiveworkshop.core.service;
 
 import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
 import net.moonlightflower.wc3libs.bin.app.DOO_UNITS;
@@ -7,11 +7,11 @@ import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords3DF;
 import net.moonlightflower.wc3libs.misc.MetaFieldId;
 import net.moonlightflower.wc3libs.txt.WTS;
-import org.example.core.model.ExistingUnit;
-import org.example.core.model.MapMetadata;
-import org.example.core.model.UnitEntry;
-import org.example.core.util.CameraBounds;
-import org.example.core.util.StringUtils;
+import com.hiveworkshop.core.model.ExistingUnit;
+import com.hiveworkshop.core.model.MapMetadata;
+import com.hiveworkshop.core.model.UnitEntry;
+import com.hiveworkshop.core.util.CameraBounds;
+import com.hiveworkshop.core.util.StringUtils;
 import systems.crigges.jmpq3.JMpqEditor;
 import systems.crigges.jmpq3.MPQOpenOption;
 

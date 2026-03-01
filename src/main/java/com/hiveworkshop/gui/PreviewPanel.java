@@ -1,6 +1,6 @@
-package org.example.gui;
+package com.hiveworkshop.gui;
 
-import org.example.gui.i18n.Messages;
+import com.hiveworkshop.gui.i18n.Messages;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;

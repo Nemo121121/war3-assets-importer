@@ -1,4 +1,4 @@
-package org.example.core.util;
+package com.hiveworkshop.core.util;
 
 import net.moonlightflower.wc3libs.dataTypes.app.Coords2DF;
 

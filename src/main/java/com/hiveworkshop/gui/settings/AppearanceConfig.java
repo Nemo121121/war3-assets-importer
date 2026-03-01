@@ -1,4 +1,4 @@
-package org.example.gui.settings;
+package com.hiveworkshop.gui.settings;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

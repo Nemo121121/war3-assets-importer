@@ -1,4 +1,4 @@
-package org.example.core.model;
+package com.hiveworkshop.core.model;
 
 /**
  * A unit definition entry read from a Warcraft 3 map's {@code war3map.w3u} file.
