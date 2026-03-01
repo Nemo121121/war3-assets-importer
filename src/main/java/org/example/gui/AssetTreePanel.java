@@ -586,14 +586,14 @@ public class AssetTreePanel extends JPanel {
     private record FileNodeData(File file, int fileCount, long totalSize) {
         @Override public String toString() {
             if (file.isDirectory()) {
-                return file.getName() + " (" + fileCount + " files, " + formatSize(totalSize) + ")";
+                return file.getName() + " (" + fileCount + " " + Messages.get("tree.files") + ", " + formatSize(totalSize) + ")";
             }
             return file.getName() + " [" + formatSize(totalSize) + "]";
         }
         private static String formatSize(long size) {
-            if (size >= 1 << 20) return String.format("%.1f MB", size / 1024.0 / 1024);
-            if (size >= 1 << 10) return String.format("%.1f KB", size / 1024.0);
-            return size + " B";
+            if (size >= 1 << 20) return String.format("%.1f %s", size / 1024.0 / 1024, Messages.get("tree.size.mb"));
+            if (size >= 1 << 10) return String.format("%.1f %s", size / 1024.0,          Messages.get("tree.size.kb"));
+            return size + " " + Messages.get("tree.size.b");
         }
     }
 

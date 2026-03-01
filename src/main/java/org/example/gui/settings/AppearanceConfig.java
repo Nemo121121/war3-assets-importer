@@ -25,10 +25,14 @@ public class AppearanceConfig {
     private static final Path CONFIG_FILE = CONFIG_DIR.resolve("appearance.json");
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final String KEY_LNF = "lookAndFeel";
+    private static final String KEY_LNF    = "lookAndFeel";
+    private static final String KEY_LOCALE = "locale";
 
     /** Fully-qualified class name of the saved L&F, or {@code null} for JVM default. */
     private String lookAndFeelClassName = null;
+
+    /** BCP-47 language tag of the saved locale (e.g. "en", "fr"), or {@code null} for JVM default. */
+    private String localeLanguage = null;
 
     // -------------------------------------------------------------------------
     // Load / save
@@ -45,6 +49,9 @@ public class AppearanceConfig {
             if (obj != null && obj.has(KEY_LNF)) {
                 lookAndFeelClassName = obj.get(KEY_LNF).getAsString();
             }
+            if (obj != null && obj.has(KEY_LOCALE)) {
+                localeLanguage = obj.get(KEY_LOCALE).getAsString();
+            }
         } catch (IOException e) {
             System.err.println("Warning: could not load appearance.json — using default L&F.");
         }
@@ -60,6 +67,9 @@ public class AppearanceConfig {
             if (lookAndFeelClassName != null) {
                 obj.addProperty(KEY_LNF, lookAndFeelClassName);
             }
+            if (localeLanguage != null) {
+                obj.addProperty(KEY_LOCALE, localeLanguage);
+            }
             try (FileWriter writer = new FileWriter(CONFIG_FILE.toFile())) {
                 GSON.toJson(obj, writer);
             }
@@ -73,8 +83,10 @@ public class AppearanceConfig {
     // -------------------------------------------------------------------------
 
     public String getLookAndFeelClassName() { return lookAndFeelClassName; }
-
     public void setLookAndFeelClassName(String name) { lookAndFeelClassName = name; }
+
+    public String getLocaleLanguage() { return localeLanguage; }
+    public void setLocaleLanguage(String lang) { localeLanguage = lang; }
 
     /**
      * Applies the saved L&F via {@link UIManager#setLookAndFeel}.

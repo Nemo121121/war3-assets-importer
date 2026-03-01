@@ -5,6 +5,7 @@ import com.hiveworkshop.blizzard.blp.BLPWriterSpi;
 import net.nikr.dds.DDSImageReaderSpi;
 import org.example.cli.ImportCommand;
 import org.example.gui.MainFrame;
+import org.example.gui.i18n.Messages;
 import org.example.gui.settings.AppearanceConfig;
 
 import javax.imageio.spi.IIORegistry;
@@ -37,9 +38,12 @@ public class Main {
             UIManager.installLookAndFeel("FlatLaf IntelliJ", "com.formdev.flatlaf.FlatIntelliJLaf");
             UIManager.installLookAndFeel("FlatLaf Darcula",  "com.formdev.flatlaf.FlatDarculaLaf");
 
-            // Load and apply the saved L&F before any Swing components are created
+            // Load and apply the saved L&F and locale before any Swing components are created
             AppearanceConfig appearanceConfig = new AppearanceConfig();
             appearanceConfig.load();
+            if (appearanceConfig.getLocaleLanguage() != null) {
+                Messages.setLocale(new java.util.Locale(appearanceConfig.getLocaleLanguage()));
+            }
             appearanceConfig.applyIfSet();
 
             SwingUtilities.invokeLater(() -> new MainFrame(appearanceConfig));

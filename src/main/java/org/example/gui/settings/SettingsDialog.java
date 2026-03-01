@@ -59,6 +59,8 @@ public class SettingsDialog extends JDialog {
      */
     public void setLocaleChangeListener(LanguagePanel.LocaleChangeListener listener) {
         languagePanel.setLocaleChangeListener(locale -> {
+            // Persist the chosen locale so it survives application restarts
+            appearanceConfig.setLocaleLanguage(locale.getLanguage());
             // Refresh dialog's own labels first
             applyI18n();
             // Then notify the parent

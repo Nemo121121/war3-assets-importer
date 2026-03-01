@@ -1,5 +1,7 @@
 package org.example.gui;
 
+import org.example.gui.i18n.Messages;
+
 public final class TreeNodeData {
     private final String name;
     private final boolean isFile;
@@ -27,13 +29,13 @@ public final class TreeNodeData {
         if (isFile) {
             return name + " [" + sizeStr + "]";
         } else {
-            return name + " (" + fileCount + " files, " + sizeStr + ")";
+            return name + " (" + fileCount + " " + Messages.get("tree.files") + ", " + sizeStr + ")";
         }
     }
 
-    private String formatSize(long size) {
-        if (size >= 1 << 20) return String.format("%.1f MB", size / 1024.0 / 1024);
-        if (size >= 1 << 10) return String.format("%.1f KB", size / 1024.0);
-        return size + " B";
+    private static String formatSize(long size) {
+        if (size >= 1 << 20) return String.format("%.1f %s", size / 1024.0 / 1024, Messages.get("tree.size.mb"));
+        if (size >= 1 << 10) return String.format("%.1f %s", size / 1024.0,          Messages.get("tree.size.kb"));
+        return size + " " + Messages.get("tree.size.b");
     }
 }
