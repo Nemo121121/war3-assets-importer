@@ -1,5 +1,6 @@
 package com.hiveworkshop.war3assetsimporter.gui;
 
+import com.hiveworkshop.war3assetsimporter.AppInfo;
 import com.hiveworkshop.war3assetsimporter.gui.i18n.Messages;
 
 import javax.swing.*;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
 public class HelpDialog extends JDialog {
 
     public HelpDialog(Frame owner) {
-        super(owner, Messages.get("help.title"), true);
+        super(owner, Messages.get("help.title") + " \u2014 " + AppInfo.APP_NAME, true);
         setSize(720, 580);
         setLocationRelativeTo(owner);
         setResizable(true);

@@ -35,16 +35,19 @@ public final class Messages {
         }
     };
 
-    private static ResourceBundle bundle = ResourceBundle.getBundle("messages", Locale.ENGLISH, UTF8_CONTROL);
+    private static Locale activeLocale = Locale.ENGLISH;
+    private static ResourceBundle bundle = ResourceBundle.getBundle("messages", activeLocale, UTF8_CONTROL);
 
     private Messages() {
     }
 
     /**
      * Returns the current locale used for string lookups.
+     * Always returns the locale explicitly passed to {@link #setLocale}, not
+     * the bundle's internal locale (which may be ROOT when the base bundle is used).
      */
     public static Locale getLocale() {
-        return bundle.getLocale();
+        return activeLocale;
     }
 
     /**
@@ -52,6 +55,7 @@ public final class Messages {
      * Call {@code applyI18n()} on all GUI components afterwards to refresh labels.
      */
     public static void setLocale(Locale locale) {
+        activeLocale = locale;
         bundle = ResourceBundle.getBundle("messages", locale, UTF8_CONTROL);
         Locale.setDefault(locale);
     }

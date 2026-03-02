@@ -20,12 +20,16 @@ public class LanguagePanel extends JPanel {
      */
     private static final List<Locale> SUPPORTED = List.of(Locale.ENGLISH, Locale.FRENCH);
     private final JComboBox<LocaleItem> localeCombo;
+    private final JLabel languageLabel;
+    private final JLabel noteLabel;
     private LocaleChangeListener changeListener;
+
     public LanguagePanel() {
         setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        add(new JLabel(Messages.get("settings.language.label")));
+        languageLabel = new JLabel(Messages.get("settings.language.label"));
+        add(languageLabel);
 
         LocaleItem[] items = SUPPORTED.stream()
                 .map(LocaleItem::new)
@@ -54,10 +58,10 @@ public class LanguagePanel extends JPanel {
 
         add(localeCombo);
 
-        JLabel note = new JLabel(Messages.get("settings.language.note"));
-        note.setForeground(Color.GRAY);
-        note.setFont(note.getFont().deriveFont(Font.ITALIC, 11f));
-        add(note);
+        noteLabel = new JLabel(Messages.get("settings.language.note"));
+        noteLabel.setForeground(Color.GRAY);
+        noteLabel.setFont(noteLabel.getFont().deriveFont(Font.ITALIC, 11f));
+        add(noteLabel);
     }
 
     public void setLocaleChangeListener(LocaleChangeListener listener) {
@@ -68,16 +72,8 @@ public class LanguagePanel extends JPanel {
      * Refreshes labels after an external locale change.
      */
     public void applyI18n() {
-        // Update the note label text — rebuild is simpler than keeping a reference
-        removeAll();
-        add(new JLabel(Messages.get("settings.language.label")));
-        add(localeCombo);
-        JLabel note = new JLabel(Messages.get("settings.language.note"));
-        note.setForeground(Color.GRAY);
-        note.setFont(note.getFont().deriveFont(Font.ITALIC, 11f));
-        add(note);
-        revalidate();
-        repaint();
+        languageLabel.setText(Messages.get("settings.language.label"));
+        noteLabel.setText(Messages.get("settings.language.note"));
     }
 
     /**

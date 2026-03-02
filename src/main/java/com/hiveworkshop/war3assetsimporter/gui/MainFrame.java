@@ -1,5 +1,6 @@
 package com.hiveworkshop.war3assetsimporter.gui;
 
+import com.hiveworkshop.war3assetsimporter.AppInfo;
 import com.hiveworkshop.war3assetsimporter.core.model.*;
 import com.hiveworkshop.war3assetsimporter.core.service.AssetDiscoveryService;
 import com.hiveworkshop.war3assetsimporter.core.service.ImportService;
@@ -148,7 +149,7 @@ public class MainFrame {
     // -------------------------------------------------------------------------
 
     private void initialize() {
-        frame = new JFrame(Messages.get("app.title"));
+        frame = new JFrame(AppInfo.APP_NAME + " v" + AppInfo.VERSION);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(1280, 900);
         frame.setLocationRelativeTo(null);
@@ -493,7 +494,7 @@ public class MainFrame {
      * Called by {@link SettingsDialog} when the user picks a new language.
      */
     public void applyI18n() {
-        frame.setTitle(Messages.get("app.title"));
+        frame.setTitle(AppInfo.APP_NAME + " v" + AppInfo.VERSION);
         openMapButton.setText(Messages.get("button.openMap"));
         importModelsButton.setText(Messages.get("button.importModels"));
         processButton.setText(Messages.get("button.process"));
