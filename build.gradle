@@ -7,8 +7,16 @@ plugins {
 group 'com.hiveworkshop'
 version '1.0-SNAPSHOT'
 
+// Use Java toolchain so Gradle auto-detects (or downloads) the correct JDK
+// on any OS — no need for org.gradle.java.home in gradle.properties.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
 application {
-    mainClass = 'com.hiveworkshop.Main'
+    mainClass = 'com.hiveworkshop.war3assetsimporter.Main'
 }
 
 repositories {
@@ -49,7 +57,7 @@ shadowJar {
     archiveClassifier = ''
     archiveVersion = ''
     manifest {
-        attributes 'Main-Class': 'com.hiveworkshop.Main'
+        attributes 'Main-Class': 'com.hiveworkshop.war3assetsimporter.Main'
     }
 }
 
@@ -64,7 +72,7 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 // Preserve UTF-8 characters in .properties files (prevents Gradle from
-// re-encoding accented characters to \uXXXX escapes during resource copy)
+// re-encoding accented characters to  escapes during resource copy)
 tasks.withType(ProcessResources).configureEach {
     filteringCharset = 'UTF-8'
 }
