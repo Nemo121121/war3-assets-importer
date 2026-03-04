@@ -15,6 +15,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
 import java.io.*;
 import java.nio.file.Path;
 import java.text.MessageFormat;
@@ -224,6 +226,7 @@ public class MainFrame {
         panel.add(statusBar, BorderLayout.SOUTH);
 
         frame.getContentPane().add(panel);
+        installDragAndDrop();
 
         // ---- Button wiring ----
         openMapButton.addActionListener(this::onOpenMap);
@@ -239,6 +242,11 @@ public class MainFrame {
         JFileChooser chooser = new JFileChooser(lastMapDir);
         chooser.setDialogTitle(Messages.get("dialog.openMap"));
         if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+        File selectedMap = chooser.getSelectedFile();
+        if (selectedMap != null) {
+            openMapFile(selectedMap);
+            return;
+        }
 
         mapFile = chooser.getSelectedFile();
         lastMapDir = mapFile.getParentFile();
@@ -324,6 +332,11 @@ public class MainFrame {
         chooser.setDialogTitle(Messages.get("dialog.importFolder"));
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+        File selectedModelsFolder = chooser.getSelectedFile();
+        if (selectedModelsFolder != null) {
+            importModelsFolder(selectedModelsFolder);
+            return;
+        }
 
         // Cancel any in-flight scan
         if (discoveryWorker != null && !discoveryWorker.isDone()) discoveryWorker.cancel(true);
@@ -340,6 +353,168 @@ public class MainFrame {
         statusBar.setString(Messages.get("status.scanning"));
 
         File scanFolder = modelsFolder; // capture for background thread
+        discoveryWorker = new SwingWorker<>() {
+            @Override
+            protected AssetDiscoveryResult doInBackground() throws Exception {
+                return discoveryService.discover(scanFolder, this::isCancelled);
+            }
+
+            @Override
+            protected void done() {
+                statusBar.setIndeterminate(false);
+                importModelsButton.setEnabled(true);
+                if (isCancelled()) {
+                    statusBar.setString(Messages.get("status.ready"));
+                    return;
+                }
+                try {
+                    discoveredAssets = get();
+                    LOG.fine("Asset discovery complete: " + discoveredAssets.mdxFiles().size()
+                            + " MDX, " + discoveredAssets.textureFiles().size() + " textures");
+                    log(MessageFormat.format(Messages.get("log.foundMdx"), discoveredAssets.mdxFiles().size()));
+                    log(MessageFormat.format(Messages.get("log.foundTextures"), discoveredAssets.textureFiles().size()));
+                    assetTreePanel.updateTree(discoveredAssets.mdxFiles(), discoveredAssets.textureFiles(),
+                            discoveredAssets.fileSizes());
+                    statusBar.setString(Messages.get("status.ready"));
+                } catch (Exception ex) {
+                    LOG.log(Level.WARNING, "Asset discovery failed", ex);
+                    log(MessageFormat.format(Messages.get("log.errorReadingFiles"), ex.getMessage()));
+                    statusBar.setString(Messages.get("status.error"));
+                }
+            }
+        };
+        discoveryWorker.execute();
+    }
+
+    private void installDragAndDrop() {
+        TransferHandler dropHandler = new TransferHandler() {
+            @Override
+            public boolean canImport(TransferSupport support) {
+                return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            }
+
+            @Override
+            public boolean importData(TransferSupport support) {
+                if (!canImport(support)) return false;
+                try {
+                    Transferable transferable = support.getTransferable();
+                    @SuppressWarnings("unchecked")
+                    List<File> files = (List<File>) transferable.getTransferData(DataFlavor.javaFileListFlavor);
+                    if (files == null || files.isEmpty()) return false;
+
+                    for (File droppedFile : files) {
+                        if (droppedFile == null || !droppedFile.exists()) continue;
+                        if (isWarcraftMapFile(droppedFile)) {
+                            openMapFile(droppedFile);
+                        } else if (droppedFile.isDirectory()) {
+                            importModelsFolder(droppedFile);
+                        } else {
+                            File parentFolder = droppedFile.getParentFile();
+                            if (parentFolder != null) importModelsFolder(parentFolder);
+                        }
+                    }
+                    return true;
+                } catch (Exception ex) {
+                    LOG.log(Level.WARNING, "Failed to import dropped files", ex);
+                    log("Drag-and-drop failed: " + ex.getMessage());
+                    return false;
+                }
+            }
+        };
+        frame.getRootPane().setTransferHandler(dropHandler);
+        if (frame.getContentPane() instanceof JComponent content) {
+            content.setTransferHandler(dropHandler);
+        }
+    }
+
+    private static boolean isWarcraftMapFile(File file) {
+        if (!file.isFile()) return false;
+        String lowerName = file.getName().toLowerCase();
+        return lowerName.endsWith(".w3x") || lowerName.endsWith(".w3m");
+    }
+
+    private void openMapFile(File selectedMapFile) {
+        mapFile = selectedMapFile;
+        lastMapDir = mapFile.getParentFile();
+        LOG.info("Opening map: " + mapFile.getAbsolutePath());
+        log(MessageFormat.format(Messages.get("log.selectedMap"), mapFile.getAbsolutePath()));
+        importConfigPanel.setOutputPath(defaultOutputPath(mapFile));
+
+        try {
+            MapMetadata meta = metadataService.loadMetadata(mapFile);
+            LOG.fine("Metadata loaded - name='" + meta.name() + "' warning=" + meta.loadWarning());
+
+            if (meta.loadWarning() != null) {
+                log("Warning: " + meta.loadWarning());
+            }
+
+            mapDescriptionPanel.setMapName(meta.name());
+            mapDescriptionPanel.setDescription(meta.description());
+            mapDescriptionPanel.setAuthor(meta.author());
+            mapDescriptionPanel.setMapVersion(meta.gameVersion());
+            mapDescriptionPanel.setEditorVersion(meta.editorVersion());
+            mapDescriptionPanel.setPreviewImage(meta.previewImageBytes());
+
+            byte[] previewBytes = meta.previewImageBytes();
+            if (previewBytes != null && previewBytes.length > 0) {
+                try {
+                    BufferedImage previewImg = ImageIO.read(new ByteArrayInputStream(previewBytes));
+                    if (previewImg != null) importConfigPanel.setMapPreviewImage(previewImg);
+                } catch (Exception ignored) {
+                }
+            }
+
+            if (meta.loadWarning() == null) {
+                log("Top left: " + meta.cameraBounds().getTopLeft());
+                log("Bottom right: " + meta.cameraBounds().getBottomRight());
+            }
+        } catch (Exception ex) {
+            LOG.log(Level.WARNING, "Failed to open map '" + mapFile.getName() + "'", ex);
+            log(MessageFormat.format(Messages.get("log.errorLoadingMap"), ex.getMessage()));
+            StringWriter sw = new StringWriter();
+            ex.printStackTrace(new PrintWriter(sw));
+            JTextArea textArea = new JTextArea(
+                    "Could not open map file:\n\n" + ex.getMessage()
+                            + "\n\nMake sure the file is not open in another application."
+                            + "\n\n--- Stack Trace ---\n" + sw);
+            textArea.setEditable(false);
+            textArea.setCaretPosition(0);
+            JScrollPane errScroll = new JScrollPane(textArea);
+            errScroll.setPreferredSize(new Dimension(600, 300));
+            JOptionPane.showMessageDialog(frame, errScroll, "Map Open Error", JOptionPane.ERROR_MESSAGE);
+            mapFile = null;
+            return;
+        }
+
+        List<UnitEntry> mapUnits = metadataService.loadMapUnits(mapFile);
+        importConfigPanel.setUnitSuggestions(mapUnits);
+        if (!mapUnits.isEmpty()) {
+            log("Loaded " + mapUnits.size() + " unit definition(s) for suggestions.");
+        }
+
+        List<ExistingUnit> existingUnits = metadataService.loadExistingUnitPlacements(mapFile);
+        importConfigPanel.setExistingUnits(existingUnits);
+        if (!existingUnits.isEmpty()) {
+            log("Found " + existingUnits.size() + " existing unit placement(s) on map.");
+        }
+    }
+
+    private void importModelsFolder(File selectedModelsFolder) {
+        if (selectedModelsFolder == null || !selectedModelsFolder.isDirectory()) return;
+
+        if (discoveryWorker != null && !discoveryWorker.isDone()) discoveryWorker.cancel(true);
+
+        modelsFolder = selectedModelsFolder;
+        lastModelsDir = modelsFolder.getParentFile();
+        LOG.info("Scanning assets folder: " + modelsFolder.getAbsolutePath());
+        assetTreePanel.setModelsFolder(modelsFolder);
+        log(MessageFormat.format(Messages.get("log.selectedFolder"), modelsFolder.getAbsolutePath()));
+
+        importModelsButton.setEnabled(false);
+        statusBar.setIndeterminate(true);
+        statusBar.setString(Messages.get("status.scanning"));
+
+        File scanFolder = modelsFolder;
         discoveryWorker = new SwingWorker<>() {
             @Override
             protected AssetDiscoveryResult doInBackground() throws Exception {
