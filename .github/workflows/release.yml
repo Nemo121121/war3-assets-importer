@@ -1,0 +1,109 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Release workflow
+#
+# Trigger: push a version tag  →  git tag v0.1.0 && git push origin v0.1.0
+#
+# What it does:
+#   1. Builds a portable app-image on each of the three target platforms in
+#      parallel (Windows zip · macOS zip · Linux zip).
+#   2. Uploads each zip as a GitHub Actions artifact.
+#   3. Creates a GitHub Release with all three zips attached and
+#      auto-generated release notes.
+#
+# Before bumping to a new version:
+#   1. Update  version '...'  in build.gradle.
+#   2. Commit, push, then tag: git tag v<version> && git push origin v<version>
+# ──────────────────────────────────────────────────────────────────────────────
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+
+  # ── Build portable app-image on each OS ────────────────────────────────────
+  package:
+    name: Package (${{ matrix.os }})
+    strategy:
+      fail-fast: false   # let all three platforms finish even if one fails
+      matrix:
+        include:
+          - os: windows-latest
+            artifact-name: app-windows
+            zip-name: War3AssetsImporter-windows.zip
+          - os: macos-latest
+            artifact-name: app-macos
+            zip-name: War3AssetsImporter-macos.zip
+          - os: ubuntu-latest
+            artifact-name: app-linux
+            zip-name: War3AssetsImporter-linux.zip
+
+    runs-on: ${{ matrix.os }}
+
+    # All 'run:' steps execute inside the project subdirectory
+    defaults:
+      run:
+        working-directory: War3AssetsImporter
+
+    steps:
+      - name: Checkout War3AssetsImporter
+        uses: actions/checkout@v4
+        with:
+          path: War3AssetsImporter   # sibling layout satisfies ../wc3libs if needed
+
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Make Gradle wrapper executable
+        if: runner.os != 'Windows'
+        run: chmod +x gradlew
+
+      - name: Build app-image
+        run: ./gradlew jpackageTask --no-daemon
+
+      # app-image produces a directory; zip it so it uploads as a single file.
+      # macOS produces  build/dist/War3AssetsImporter.app  (a .app bundle dir)
+      # Windows/Linux produce  build/dist/War3AssetsImporter/
+      - name: Zip app-image
+        shell: bash
+        run: |
+          cd build/dist
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            zip -r "${{ matrix.zip-name }}" "War3AssetsImporter.app"
+          else
+            zip -r "${{ matrix.zip-name }}" "War3AssetsImporter"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          # path is relative to the workspace root, not working-directory
+          path: War3AssetsImporter/build/dist/${{ matrix.zip-name }}
+          retention-days: 7
+
+  # ── Create GitHub Release and attach all zips ──────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create a release
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true   # flatten into a single dist/ directory
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
