@@ -15,12 +15,18 @@ Built with Java Swing. Work in progress.
 
 See more by clicking on the Help button
 
+## Usage
+
+1. Click **Open Map** and select a `.w3x` or `.w3m` file
+2. Click **Open Assets Folder** and point to your MDX/textures directory
+3. Check the assets you want to import in the tree panel
+4. Configure unit naming and placement options in the **Import Configuration** tab
+5. Click **Process & Save**
+
 ## Video
 
 
 https://github.com/user-attachments/assets/fbe70dc2-c9b8-428f-a1bf-4e5dca47ef6f
-
-
 
 ## Screenshots
 
@@ -31,14 +37,6 @@ https://github.com/user-attachments/assets/fbe70dc2-c9b8-428f-a1bf-4e5dca47ef6f
 ### Import Configuration Panel
 
 ![Import Configuration Panel](docs/images/import_configuration_panel.jpg)
-
-## Usage
-
-1. Click **Open Map** and select a `.w3x` or `.w3m` file
-2. Click **Open Assets Folder** and point to your MDX/BLP directory
-3. Check the assets you want to import in the tree panel
-4. Configure unit naming and placement options in the **Import Configuration** tab
-5. Click **Process & Save** - the tool writes a new file named `processed_<mapname>.w3x`
 
 ## Building from Source
 
