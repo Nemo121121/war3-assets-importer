@@ -12,7 +12,8 @@ Built with Java Swing. Work in progress.
 - Preview textures before importing
 - Automatically generates unit definitions and places them on the map
 - Draws a placement preview so you can see where units will appear
-- Supports English and French UI
+
+See more by clicking on the Help button
 
 ## Screenshots
 
@@ -23,18 +24,6 @@ Built with Java Swing. Work in progress.
 ### Import Configuration Panel
 
 ![Import Configuration Panel](docs/images/import_configuration_panel.jpg)
-
-## Download
-
-Grab the latest `War3AssetsImporter.jar` from the [Releases](../../releases) page.
-
-## Running
-
-```bash
-java -jar War3AssetsImporter.jar
-```
-
-No installation needed.
 
 ## Usage
 
