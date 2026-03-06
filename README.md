@@ -8,12 +8,19 @@ Built with Java Swing. Work in progress.
 
 ## Features
 
-- Browse and select MDX and textures assets from a folder tree
+- Browse and select MDX and texture assets from a folder tree
 - Preview textures before importing
 - Automatically generates unit definitions and places them on the map
 - Draws a placement preview so you can see where units will appear
 
 See more by clicking on the Help button
+
+## Video
+
+
+https://github.com/user-attachments/assets/fbe70dc2-c9b8-428f-a1bf-4e5dca47ef6f
+
+
 
 ## Screenshots
 
