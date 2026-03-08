@@ -78,6 +78,8 @@ public class ImportConfigPanel extends JPanel {
     private JButton browseBtn;
     // ---- Caching for preview ----
     private java.util.List<String> selectedMdxFilenames = java.util.Collections.emptyList();
+    /** Alternate-animation keywords per relative MDX path; used to compute the effective unit count. */
+    private java.util.Map<String, java.util.List<String>> mdxAlternateAnims = java.util.Collections.emptyMap();
 
     // -------------------------------------------------------------------------
     // Construction
@@ -523,15 +525,37 @@ public class ImportConfigPanel extends JPanel {
     }
 
     /**
+     * Supplies the alternate-animation map so {@link #setSelectedMdxFilenames} can factor
+     * in extra unit definitions when computing the total unit count for the preview.
+     * Should be called once per folder scan, before selections change.
+     */
+    public void setMdxAlternateAnims(java.util.Map<String, java.util.List<String>> anims) {
+        this.mdxAlternateAnims = anims != null ? anims : java.util.Collections.emptyMap();
+        // Recompute the total in case filenames were already set
+        refreshTotalUnits();
+    }
+
+    /**
      * Sets the list of selected MDX filenames for the naming preview
      * and updates the total unit count on the map preview.
      */
     public void setSelectedMdxFilenames(java.util.List<String> filenames) {
         this.selectedMdxFilenames = filenames != null ? filenames : java.util.Collections.emptyList();
-        long unitCount = this.selectedMdxFilenames.stream()
-                .filter(f -> !isPortraitMdx(f))
-                .count();
-        mapPreviewPanel.setTotalUnits((int) unitCount);
+        refreshTotalUnits();
+    }
+
+    /**
+     * Recomputes and pushes the effective unit count to the map preview.
+     * Each selected MDX file contributes 1 (base) + N (alternate animations) units.
+     */
+    private void refreshTotalUnits() {
+        int total = 0;
+        for (String f : selectedMdxFilenames) {
+            if (isPortraitMdx(f)) continue;
+            java.util.List<String> alts = mdxAlternateAnims.get(f);
+            total += 1 + (alts != null ? alts.size() : 0);
+        }
+        mapPreviewPanel.setTotalUnits(total);
     }
 
     // ---- Unit Creation Getters ----

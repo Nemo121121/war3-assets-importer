@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.logging.Logger;
+import java.util.logging.Level;
 
 /**
  * Scans a directory tree for MDX (model) and texture asset files.
@@ -43,6 +44,7 @@ public class AssetDiscoveryService {
         List<String> mdxFiles = new ArrayList<>();
         List<String> textureFiles = new ArrayList<>();
         Map<String, Long> fileSizes = new HashMap<>();
+        Map<String, List<String>> mdxAlternateAnims = new HashMap<>();
         java.nio.file.Path root = folder.toPath();
 
         Files.walk(root)
@@ -59,14 +61,19 @@ public class AssetDiscoveryService {
                     String lower = relPath.toLowerCase();
                     if (lower.endsWith(".mdx")) {
                         mdxFiles.add(relPath);
+                        List<String> anims = MdxAnimationScanner.scan(path.toFile());
+                        if (!anims.isEmpty()) {
+                            mdxAlternateAnims.put(relPath, anims);
+                        }
                     } else if (isTextureFile(lower)) {
                         textureFiles.add(relPath);
                     }
                 });
 
         LOG.fine("Discovery complete: " + mdxFiles.size() + " MDX, " + textureFiles.size()
-                + " textures in " + folder.getName());
-        return new AssetDiscoveryResult(mdxFiles, textureFiles, folder, fileSizes);
+                + " textures in " + folder.getName()
+                + " (" + mdxAlternateAnims.size() + " with alternate anims)");
+        return new AssetDiscoveryResult(mdxFiles, textureFiles, folder, fileSizes, mdxAlternateAnims);
     }
 
     /**

@@ -51,6 +51,15 @@ public class ImportService {
 
     private static final Logger LOG = Logger.getLogger(ImportService.class.getName());
 
+    /** Maps alternate-animation sequence keyword → the value to write into the {@code uani} field. */
+    private static final Map<String, String> ALTERNATE_ANIM_UANI = new LinkedHashMap<>();
+    static {
+        ALTERNATE_ANIM_UANI.put("Alternate",      "alternate");
+        ALTERNATE_ANIM_UANI.put("Upgrade First",  "upgrade,first");
+        ALTERNATE_ANIM_UANI.put("Upgrade Second", "upgrade,second");
+        ALTERNATE_ANIM_UANI.put("Upgrade Third",  "upgrade,third");
+    }
+
     // Markers used to bracket the generated JASS block so re-imports replace it in place
     private static final String JASS_SECTION_BEGIN = "// === War3AssetsImporter BEGIN ===";
     private static final String JASS_SECTION_END = "// === War3AssetsImporter END ===";
@@ -410,16 +419,7 @@ public class ImportService {
                 if (existingModelPaths.contains(modelPath)) {
                     log.accept("Unit already defined for model: " + modelPath + ", skipping.");
                 } else {
-                    String idString = UnitIDGenerator.generateNextId(existingIds);
-                    existingIds.add(idString);
-                    ObjId newId = ObjId.valueOf(idString);
-                    log.accept("Adding unit with ID: " + newId);
-
-                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(baseUnitId));
-                    unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling())); // where unit scaling is a double, e.g 1.0
-                    unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
-
-                    // Format the unit name
+                    // Resolve display name once — shared by base and all alternate unit definitions
                     String unitName;
                     if (options.getAutoNameUnits()) {
                         String baseFilename = f.getName().replaceAll("(?i)\\.mdx$", "");
@@ -428,10 +428,20 @@ public class ImportService {
                     } else {
                         unitName = f.getName().replaceAll("(?i)\\.mdx$", "");
                     }
-                    unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
 
                     String modelBaseName = f.getName().replaceAll("(?i)\\.mdx$", "").toLowerCase();
                     String iconFilename = iconByModelName.get(modelBaseName);
+
+                    // ---- Base unit definition ----
+                    String idString = UnitIDGenerator.generateNextId(existingIds);
+                    existingIds.add(idString);
+                    ObjId newId = ObjId.valueOf(idString);
+                    log.accept("Adding unit with ID: " + newId);
+
+                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(baseUnitId));
+                    unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                    unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                    unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
                     if (iconFilename != null) {
                         unitObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
                         log.accept("Assigned icon: " + iconFilename);
@@ -456,6 +466,49 @@ public class ImportService {
                             }
                             jassUnitPlacements.add(new UnitPlacement(idString, cx, cy, options.getUnitAngle()));
                             log.accept("Placed unit at: " + cx + ", " + cy);
+                        }
+                    }
+
+                    // ---- Alternate-animation unit definitions ----
+                    // Scan the MDX file for alternate/upgrade animation sequences and create
+                    // one additional unit definition per detected keyword, with uani set.
+                    List<String> alternateAnims = MdxAnimationScanner.scan(f);
+                    for (String keyword : alternateAnims) {
+                        String uaniValue = ALTERNATE_ANIM_UANI.get(keyword);
+                        if (uaniValue == null) continue;
+
+                        String altIdString = UnitIDGenerator.generateNextId(existingIds);
+                        existingIds.add(altIdString);
+                        ObjId altId = ObjId.valueOf(altIdString);
+                        log.accept("Adding alternate unit [" + keyword + "] with ID: " + altId);
+
+                        ObjMod.Obj altObj = w3u.addObj(altId, ObjId.valueOf(baseUnitId));
+                        altObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                        altObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                        altObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName + " " + keyword));
+                        altObj.set(MetaFieldId.valueOf("uani"), new War3String(uaniValue));
+                        if (iconFilename != null) {
+                            altObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                        }
+
+                        if (options.getPlaceUnits() && placer != null) {
+                            Coords2DF coords = placer.nextPosition();
+                            if (coords != null) {
+                                float cx = coords.getX().getVal();
+                                float cy = coords.getY().getVal();
+                                if (!dooUnitsParseFailed) {
+                                    DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
+                                    dooUnitObj.setTypeId(altId);
+                                    dooUnitObj.setSkinId(altId);
+                                    dooUnitObj.setPos(new Coords3DF(cx, cy, 0));
+                                    dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                                    dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
+                                    dooUnitObj.setLifePerc(-1);
+                                    dooUnitObj.setManaPerc(-1);
+                                }
+                                jassUnitPlacements.add(new UnitPlacement(altIdString, cx, cy, options.getUnitAngle()));
+                                log.accept("Placed alternate unit [" + keyword + "] at: " + cx + ", " + cy);
+                            }
                         }
                     }
                 }

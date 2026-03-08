@@ -388,8 +388,9 @@ public class MainFrame {
                             + " MDX, " + discoveredAssets.textureFiles().size() + " textures");
                     log(MessageFormat.format(Messages.get("log.foundMdx"), discoveredAssets.mdxFiles().size()));
                     log(MessageFormat.format(Messages.get("log.foundTextures"), discoveredAssets.textureFiles().size()));
+                    importConfigPanel.setMdxAlternateAnims(discoveredAssets.mdxAlternateAnims());
                     assetTreePanel.updateTree(discoveredAssets.mdxFiles(), discoveredAssets.textureFiles(),
-                            discoveredAssets.fileSizes());
+                            discoveredAssets.fileSizes(), discoveredAssets.mdxAlternateAnims());
                     statusBar.setString(Messages.get("status.ready"));
                 } catch (Exception ex) {
                     LOG.log(Level.WARNING, "Asset discovery failed", ex);
@@ -545,8 +546,9 @@ public class MainFrame {
                             + " MDX, " + discoveredAssets.textureFiles().size() + " textures");
                     log(MessageFormat.format(Messages.get("log.foundMdx"), discoveredAssets.mdxFiles().size()));
                     log(MessageFormat.format(Messages.get("log.foundTextures"), discoveredAssets.textureFiles().size()));
+                    importConfigPanel.setMdxAlternateAnims(discoveredAssets.mdxAlternateAnims());
                     assetTreePanel.updateTree(discoveredAssets.mdxFiles(), discoveredAssets.textureFiles(),
-                            discoveredAssets.fileSizes());
+                            discoveredAssets.fileSizes(), discoveredAssets.mdxAlternateAnims());
                     statusBar.setString(Messages.get("status.ready"));
                 } catch (Exception ex) {
                     LOG.log(Level.WARNING, "Asset discovery failed", ex);

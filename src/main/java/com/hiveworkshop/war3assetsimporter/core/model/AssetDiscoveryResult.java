@@ -8,20 +8,33 @@ public final class AssetDiscoveryResult {
     private final List<String> textureFiles;
     private final File rootFolder;
     private final Map<String, Long> fileSizes;
+    /**
+     * Maps relative MDX path → list of alternate-animation keywords detected in that file
+     * (e.g. {@code ["Alternate", "Upgrade First"]}). Only MDX files with at least one
+     * such keyword are present as keys.
+     */
+    private final Map<String, List<String>> mdxAlternateAnims;
 
     public AssetDiscoveryResult(List<String> mdxFiles, List<String> textureFiles,
-                                File rootFolder, Map<String, Long> fileSizes) {
+                                File rootFolder, Map<String, Long> fileSizes,
+                                Map<String, List<String>> mdxAlternateAnims) {
         this.mdxFiles = Collections.unmodifiableList(new ArrayList<>(mdxFiles));
         this.textureFiles = Collections.unmodifiableList(new ArrayList<>(textureFiles));
         this.rootFolder = rootFolder;
         this.fileSizes = Collections.unmodifiableMap(new HashMap<>(fileSizes));
+        this.mdxAlternateAnims = Collections.unmodifiableMap(new HashMap<>(mdxAlternateAnims));
+    }
+
+    public AssetDiscoveryResult(List<String> mdxFiles, List<String> textureFiles,
+                                File rootFolder, Map<String, Long> fileSizes) {
+        this(mdxFiles, textureFiles, rootFolder, fileSizes, Collections.emptyMap());
     }
 
     /**
      * Backward-compatible constructor (CLI path — sizes not needed).
      */
     public AssetDiscoveryResult(List<String> mdxFiles, List<String> textureFiles, File rootFolder) {
-        this(mdxFiles, textureFiles, rootFolder, Collections.emptyMap());
+        this(mdxFiles, textureFiles, rootFolder, Collections.emptyMap(), Collections.emptyMap());
     }
 
     public List<String> mdxFiles() {
@@ -38,6 +51,10 @@ public final class AssetDiscoveryResult {
 
     public Map<String, Long> fileSizes() {
         return fileSizes;
+    }
+
+    public Map<String, List<String>> mdxAlternateAnims() {
+        return mdxAlternateAnims;
     }
 
     public int totalFileCount() {

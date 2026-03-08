@@ -223,10 +223,22 @@ public class AssetTreePanel extends JPanel {
      */
     public void updateTree(List<String> mdxFiles, List<String> textureFiles,
                            Map<String, Long> fileSizes) {
+        updateTree(mdxFiles, textureFiles, fileSizes, java.util.Collections.emptyMap());
+    }
+
+    /**
+     * Rebuilds both trees from the discovered file lists, including alternate-animation metadata.
+     * Called after the user picks a models folder.
+     *
+     * @param mdxAlternateAnims map from relative MDX path → list of alternate-animation keywords
+     */
+    public void updateTree(List<String> mdxFiles, List<String> textureFiles,
+                           Map<String, Long> fileSizes,
+                           Map<String, List<String>> mdxAlternateAnims) {
         // ---- Category tree ----
         pendingNodes.clear();
-        JCheckBoxTreeNode mdxNode = buildCategoryTree(Messages.get("tree.mdx"), mdxFiles, fileSizes);
-        JCheckBoxTreeNode blpNode = buildCategoryTree(Messages.get("tree.textures"), textureFiles, fileSizes);
+        JCheckBoxTreeNode mdxNode = buildCategoryTree(Messages.get("tree.mdx"), mdxFiles, fileSizes, mdxAlternateAnims);
+        JCheckBoxTreeNode blpNode = buildCategoryTree(Messages.get("tree.textures"), textureFiles, fileSizes, java.util.Collections.emptyMap());
 
         TreeNodeData mdxData = (TreeNodeData) mdxNode.getUserObject();
         TreeNodeData blpData = (TreeNodeData) blpNode.getUserObject();
@@ -339,7 +351,8 @@ public class AssetTreePanel extends JPanel {
     }
 
     private JCheckBoxTreeNode buildCategoryTree(String label, List<String> filePaths,
-                                                Map<String, Long> fileSizes) {
+                                                Map<String, Long> fileSizes,
+                                                Map<String, List<String>> alternateAnims) {
         FolderNode folderRoot = new FolderNode(label);
         for (String rel : filePaths) {
             String[] parts = rel.split("/");
@@ -351,6 +364,8 @@ public class AssetTreePanel extends JPanel {
                     cur.incrementFileCount();
                     Long size = fileSizes.get(rel);
                     if (size != null) cur.addSize(size);
+                    List<String> anims = alternateAnims.get(rel);
+                    if (anims != null && !anims.isEmpty()) cur.setAlternateAnims(anims);
                 }
             }
         }
@@ -361,7 +376,8 @@ public class AssetTreePanel extends JPanel {
     private JCheckBoxTreeNode toCheckBoxNode(FolderNode fn, String parentPath) {
         String fullPath = parentPath.isEmpty() ? fn.getName() : parentPath + "/" + fn.getName();
         TreeNodeData data = new TreeNodeData(
-                fn.getName(), fn.isFile(), fullPath, fn.getTotalSize(), fn.getFileCount());
+                fn.getName(), fn.isFile(), fullPath, fn.getTotalSize(), fn.getFileCount(),
+                fn.getAlternateAnims());
         JCheckBoxTreeNode node = new JCheckBoxTreeNode(data, false);
         if (!fn.isFile() && !fn.getChildren().isEmpty()) {
             node.add(new JCheckBoxTreeNode(SENTINEL, false));
@@ -871,6 +887,7 @@ public class AssetTreePanel extends JPanel {
         private final Map<String, FolderNode> children = new LinkedHashMap<>();
         private int fileCount = 0;
         private long totalSize = 0;
+        private List<String> alternateAnims = Collections.emptyList();
 
         FolderNode(String name, boolean isFile) {
             this.name = name;
@@ -911,6 +928,14 @@ public class AssetTreePanel extends JPanel {
 
         void addSize(long size) {
             totalSize += size;
+        }
+
+        void setAlternateAnims(List<String> anims) {
+            this.alternateAnims = anims != null ? anims : Collections.emptyList();
+        }
+
+        List<String> getAlternateAnims() {
+            return alternateAnims;
         }
 
         int recalculateCountsAndSizes() {
