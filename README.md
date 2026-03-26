@@ -109,6 +109,11 @@ git push origin vX.Y.Z
 - `War3AssetsImporter-macos.zip`
 - `War3AssetsImporter-linux.zip`
 
+## Credits
+
+[wc3libs](https://github.com/inwc3/wc3libs) - Java library for reading and modifying Warcraft III maps and game files
+[blp-iio-plugin](https://github.com/DrSuperGood/blp-iio-plugin/tree/master) - Java Image IO plugins for BLP texture files
+
 ## License
 
 [MIT](LICENSE)
