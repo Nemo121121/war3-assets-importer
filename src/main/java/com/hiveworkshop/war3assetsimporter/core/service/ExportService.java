@@ -193,6 +193,7 @@ public class ExportService {
         // Write every field modification with its type
         sb.append("    \"fields\": {\n");
         List<ObjMod.Obj.Mod> mods = obj.getMods();
+        if (mods == null) mods = List.of();
         for (int i = 0; i < mods.size(); i++) {
             ObjMod.Obj.Mod mod = mods.get(i);
             String fieldId = mod.getId().toString();

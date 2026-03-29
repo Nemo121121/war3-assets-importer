@@ -76,6 +76,7 @@ public class DefinitionDataLoader {
                     Map<String, FieldEntry> fields = new LinkedHashMap<>();
                     if (obj.has("fields") && obj.get("fields").isJsonObject()) {
                         for (var entry : obj.getAsJsonObject("fields").entrySet()) {
+                            if (!entry.getValue().isJsonObject()) continue; // skip malformed entries
                             JsonObject fieldObj = entry.getValue().getAsJsonObject();
                             String type = fieldObj.has("type") ? fieldObj.get("type").getAsString() : "STRING";
                             String value = fieldObj.has("value") ? fieldObj.get("value").getAsString() : "";
@@ -130,13 +131,20 @@ public class DefinitionDataLoader {
 
             FieldEntry fe = entry.getValue();
             try {
+                if (fe.value() == null || fe.value().isEmpty()) continue;
                 MetaFieldId metaId = MetaFieldId.valueOf(fieldId);
                 switch (fe.type()) {
                     case "INT" -> obj.set(metaId, War3Int.valueOf(Integer.parseInt(fe.value())));
-                    case "REAL", "UNREAL" -> obj.set(metaId, new War3Real(Float.parseFloat(fe.value())));
+                    case "REAL", "UNREAL" -> {
+                        float f = Float.parseFloat(fe.value());
+                        if (!Float.isFinite(f)) continue; // skip NaN/Infinity
+                        obj.set(metaId, new War3Real(f));
+                    }
                     default -> obj.set(metaId, new War3String(fe.value()));
                 }
                 applied++;
+            } catch (NumberFormatException nfe) {
+                LOG.log(Level.WARNING, "Invalid number for field " + fieldId + ": " + fe.value());
             } catch (Exception e) {
                 LOG.log(Level.FINE, "Could not apply field " + fieldId + "=" + fe.value(), e);
             }

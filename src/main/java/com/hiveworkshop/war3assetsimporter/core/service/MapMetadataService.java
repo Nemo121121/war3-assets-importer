@@ -84,6 +84,11 @@ public class MapMetadataService {
         return raw.trim();
     }
 
+    /** Swaps backslashes to forward slashes for path comparison. */
+    private static String normalizePath(String path) {
+        return path.replace('\\', '/');
+    }
+
     private static int readUInt32LE(byte[] bytes, int offset) {
         return ByteBuffer.wrap(bytes, offset, Integer.BYTES)
                 .order(ByteOrder.LITTLE_ENDIAN)
@@ -285,10 +290,13 @@ public class MapMetadataService {
                         if (mdlVal == null) continue;
                         String modelPath = mdlVal.toString();
                         String baseId = obj.getBaseId() != null ? obj.getBaseId().toString() : "";
+                        // Store both slash variants so IMP path matches regardless of separator
                         if (BUILDING_BASE_IDS.contains(baseId)) {
                             buildingModelPaths.add(modelPath);
+                            buildingModelPaths.add(normalizePath(modelPath));
                         } else {
                             unitModelPaths.add(modelPath);
+                            unitModelPaths.add(normalizePath(modelPath));
                         }
                     }
                 } catch (Exception e) {
@@ -303,7 +311,10 @@ public class MapMetadataService {
                             new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3d"))));
                     for (W3D.Dood obj : w3d.getObjsList()) {
                         Object mdlVal = obj.get(MetaFieldId.valueOf("dfil"));
-                        if (mdlVal != null) doodadModelPaths.add(mdlVal.toString());
+                        if (mdlVal != null) {
+                            doodadModelPaths.add(mdlVal.toString());
+                            doodadModelPaths.add(normalizePath(mdlVal.toString()));
+                        }
                     }
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, "Could not parse W3D for asset classification", e);
@@ -327,14 +338,15 @@ public class MapMetadataService {
                 boolean isSound = SOUND_EXTS.contains(ext);
                 if (!isMdx && !isTexture && !isSound) continue;
 
-                // Determine category
+                // Determine category — check both original and normalized path
                 Category cat;
+                String normalizedPath = normalizePath(path);
                 if (isMdx) {
-                    if (buildingModelPaths.contains(path)) {
+                    if (buildingModelPaths.contains(path) || buildingModelPaths.contains(normalizedPath)) {
                         cat = Category.BUILDING_MODEL;
-                    } else if (doodadModelPaths.contains(path)) {
+                    } else if (doodadModelPaths.contains(path) || doodadModelPaths.contains(normalizedPath)) {
                         cat = Category.DOODAD_MODEL;
-                    } else if (unitModelPaths.contains(path)) {
+                    } else if (unitModelPaths.contains(path) || unitModelPaths.contains(normalizedPath)) {
                         cat = Category.UNIT_MODEL;
                     } else {
                         cat = Category.UNIT_MODEL; // default for uncategorised MDX
