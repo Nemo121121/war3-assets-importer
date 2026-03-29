@@ -196,7 +196,7 @@ public class ExportService {
         for (int i = 0; i < mods.size(); i++) {
             ObjMod.Obj.Mod mod = mods.get(i);
             String fieldId = mod.getId().toString();
-            String valType = mod.getValType().name(); // INT, REAL, UNREAL, STRING
+            String valType = mod.getValType() != null ? mod.getValType().name() : "STRING";
             String value = mod.getVal() != null ? mod.getVal().toString() : "";
 
             sb.append("      \"").append(escapeJson(fieldId)).append("\": { ");

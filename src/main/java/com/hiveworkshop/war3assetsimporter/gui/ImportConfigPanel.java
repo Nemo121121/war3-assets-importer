@@ -889,6 +889,19 @@ public class ImportConfigPanel extends JPanel {
         placeBuildingsBox.setSelected(cfg.isPlaceBuildings());
         buildingOriginField.setText(cfg.getBuildingOriginId());
 
+        // Enforce mutual exclusion — setSelected() doesn't fire ActionListeners,
+        // so we must manually ensure only one of units/doodads/buildings is active.
+        if (createUnitsBox.isSelected()) {
+            createDoodadsBox.setSelected(false);
+            createBuildingsBox.setSelected(false);
+        } else if (createDoodadsBox.isSelected()) {
+            createUnitsBox.setSelected(false);
+            createBuildingsBox.setSelected(false);
+        } else if (createBuildingsBox.isSelected()) {
+            createUnitsBox.setSelected(false);
+            createDoodadsBox.setSelected(false);
+        }
+
         // Restore placing order combo
         String savedOrder = cfg.getPlacingOrder();
         for (int i = 0; i < placingOrderCombo.getItemCount(); i++) {

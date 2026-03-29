@@ -802,21 +802,33 @@ public class ImportService {
     }
 
     /**
-     * Looks up a saved definition by model path. Tries the full path first,
-     * then falls back to filename-only match (for when flatten paths changes).
+     * Looks up a saved definition by model path. Tries the full path first
+     * (with both slash directions), then falls back to filename-only match
+     * (for when flatten-paths changes the path between export and import).
      */
     private static DefinitionDataLoader.SavedDefinition findSavedDef(
             Map<String, DefinitionDataLoader.SavedDefinition> savedDefs,
             String modelPath, String filename) {
         if (savedDefs.isEmpty()) return null;
+
         // Exact match
         DefinitionDataLoader.SavedDefinition def = savedDefs.get(modelPath);
         if (def != null) return def;
-        // Try filename-only match (handles flatten-paths mismatch)
-        String nameOnly = filename.replace(".mdx", "").replace(".MDX", "");
+
+        // Try with opposite slash direction (MPQ uses backslash, file system uses forward)
+        String altPath = modelPath.contains("\\")
+                ? modelPath.replace('\\', '/')
+                : modelPath.replace('/', '\\');
+        def = savedDefs.get(altPath);
+        if (def != null) return def;
+
+        // Filename-only fallback (handles flatten-paths mismatch)
         for (var entry : savedDefs.entrySet()) {
             String key = entry.getKey();
-            if (key.endsWith(filename) || key.endsWith(filename.replace('/', '\\'))) {
+            // Compare just the filename portion
+            int sep = Math.max(key.lastIndexOf('/'), key.lastIndexOf('\\'));
+            String keyFilename = sep >= 0 ? key.substring(sep + 1) : key;
+            if (keyFilename.equalsIgnoreCase(filename)) {
                 return entry.getValue();
             }
         }
