@@ -636,7 +636,10 @@ public class MainFrame {
                 importConfigPanel.isCreateAlternateUnitsEnabled(),
                 importConfigPanel.isCreateDoodadsSelected(),
                 importConfigPanel.isPlaceDoodadsSelected(),
-                importConfigPanel.getDoodadOriginId()
+                importConfigPanel.getDoodadOriginId(),
+                importConfigPanel.isCreateBuildingsSelected(),
+                importConfigPanel.isPlaceBuildingsSelected(),
+                importConfigPanel.getBuildingOriginId()
         );
 
         // Resolve the output file path
@@ -703,10 +706,15 @@ public class MainFrame {
         JFileChooser chooser = new JFileChooser(lastModelsDir);
         chooser.setDialogTitle(Messages.get("dialog.exportFolder"));
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
 
-        File exportDir = chooser.getSelectedFile();
-        lastModelsDir = exportDir;
+        // Auto-create a subfolder named after the map file (without extension)
+        File parentDir = chooser.getSelectedFile();
+        lastModelsDir = parentDir;
+        String mapName = mapFile.getName();
+        int dot = mapName.lastIndexOf('.');
+        String folderName = (dot > 0 ? mapName.substring(0, dot) : mapName) + "_assets";
+        File exportDir = new File(parentDir, folderName);
         log("Exporting " + selectedPaths.size() + " asset(s) to: " + exportDir.getAbsolutePath());
 
         statusBar.setIndeterminate(true);

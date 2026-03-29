@@ -40,11 +40,25 @@ public final class ImportOptions {
      * Base doodad type ID to use as the template (e.g. "YTlb" for a tree doodad).
      */
     private final String doodadOriginId;
+    /**
+     * When true, custom building unit definitions (W3U) are created for each imported MDX file.
+     * Buildings use a building-type base unit (e.g. "hhou" for Human Farm).
+     */
+    private final boolean createBuildings;
+    /**
+     * When true, created buildings are placed on the terrain.
+     */
+    private final boolean placeBuildings;
+    /**
+     * Base building unit type ID (e.g. "hhou" for Human Farm).
+     */
+    private final String buildingOriginId;
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, String unitOriginId) {
         this(createUnits, placeUnits, clearUnits, clearAssets, 1.0, 270, 64.0, 64.0, unitOriginId,
                 false, "Space Separated", false, false, PlacingOrder.ROWS, null, true,
-                false, false, "YTlb");
+                false, false, "YTlb",
+                false, false, "hhou");
     }
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, double unitScaling,
@@ -56,7 +70,8 @@ public final class ImportOptions {
                          PlacementBounds placementBounds) {
         this(createUnits, placeUnits, clearUnits, clearAssets, unitScaling, unitAngle, unitSpacingX, unitSpacingY,
                 unitOriginId, autoNameUnits, nameFormat, autoAssignIcon, flattenPaths, placingOrder, placementBounds,
-                true, false, false, "YTlb");
+                true, false, false, "YTlb",
+                false, false, "hhou");
     }
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, double unitScaling,
@@ -69,7 +84,8 @@ public final class ImportOptions {
                          boolean createAlternateUnits) {
         this(createUnits, placeUnits, clearUnits, clearAssets, unitScaling, unitAngle, unitSpacingX, unitSpacingY,
                 unitOriginId, autoNameUnits, nameFormat, autoAssignIcon, flattenPaths, placingOrder, placementBounds,
-                createAlternateUnits, false, false, "YTlb");
+                createAlternateUnits, false, false, "YTlb",
+                false, false, "hhou");
     }
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, double unitScaling,
@@ -82,6 +98,24 @@ public final class ImportOptions {
                          boolean createAlternateUnits,
                          boolean createDoodads, boolean placeDoodads,
                          String doodadOriginId) {
+        this(createUnits, placeUnits, clearUnits, clearAssets, unitScaling, unitAngle, unitSpacingX, unitSpacingY,
+                unitOriginId, autoNameUnits, nameFormat, autoAssignIcon, flattenPaths, placingOrder, placementBounds,
+                createAlternateUnits, createDoodads, placeDoodads, doodadOriginId,
+                false, false, "hhou");
+    }
+    public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
+                         boolean clearAssets, double unitScaling,
+                         float unitAngle, double unitSpacingX, double unitSpacingY,
+                         String unitOriginId,
+                         boolean autoNameUnits, String nameFormat,
+                         boolean autoAssignIcon, boolean flattenPaths,
+                         PlacingOrder placingOrder,
+                         PlacementBounds placementBounds,
+                         boolean createAlternateUnits,
+                         boolean createDoodads, boolean placeDoodads,
+                         String doodadOriginId,
+                         boolean createBuildings, boolean placeBuildings,
+                         String buildingOriginId) {
         this.createUnits = createUnits;
         this.placeUnits = placeUnits;
         this.clearUnits = clearUnits;
@@ -101,6 +135,9 @@ public final class ImportOptions {
         this.createDoodads = createDoodads;
         this.placeDoodads = placeDoodads;
         this.doodadOriginId = doodadOriginId;
+        this.createBuildings = createBuildings;
+        this.placeBuildings = placeBuildings;
+        this.buildingOriginId = buildingOriginId;
     }
 
     public static ImportOptions defaults() {
@@ -117,6 +154,18 @@ public final class ImportOptions {
 
     public String getDoodadOriginId() {
         return doodadOriginId;
+    }
+
+    public boolean getCreateBuildings() {
+        return createBuildings;
+    }
+
+    public boolean getPlaceBuildings() {
+        return placeBuildings;
+    }
+
+    public String getBuildingOriginId() {
+        return buildingOriginId;
     }
 
     public float getUnitAngle() {

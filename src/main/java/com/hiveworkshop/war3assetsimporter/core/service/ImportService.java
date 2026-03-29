@@ -362,6 +362,9 @@ public class ImportService {
         String baseDoodadId = (options.getDoodadOriginId() != null && !options.getDoodadOriginId().isEmpty())
                 ? options.getDoodadOriginId() : "YTlb";
 
+        String baseBuildingId = (options.getBuildingOriginId() != null && !options.getBuildingOriginId().isEmpty())
+                ? options.getBuildingOriginId() : "hhou";
+
         // ---- Load or create DOO (doodad placements) ----
         DOO doo;
         boolean dooParseFailed = false;
@@ -601,11 +604,72 @@ public class ImportService {
                     }
                 }
             }
+
+            // ---- Building definition for this MDX file ----
+            // Buildings are W3U entries with a building-type base unit (e.g. hhou).
+            if (f.getName().toLowerCase().endsWith(".mdx") && !isPortrait && options.getCreateBuildings()) {
+                String modelPath = options.getFlattenPaths() ? f.getName() : filePath.toString();
+                if (existingModelPaths.contains(modelPath)) {
+                    log.accept("Building already defined for model: " + modelPath + ", skipping.");
+                } else {
+                    String unitName;
+                    if (options.getAutoNameUnits()) {
+                        String baseFilename = f.getName().replaceAll("(?i)\\.mdx$", "");
+                        unitName = NameFormatter.format(baseFilename, options.getNameFormat());
+                    } else {
+                        unitName = f.getName().replaceAll("(?i)\\.mdx$", "");
+                    }
+
+                    String modelBaseName = f.getName().replaceAll("(?i)\\.mdx$", "").toLowerCase();
+                    String iconFilename = iconByModelName.get(modelBaseName);
+
+                    String idString = UnitIDGenerator.generateNextId(existingIds);
+                    if (idString == null) {
+                        log.accept("Warning: unit ID space exhausted — cannot create more buildings.");
+                    } else {
+                        existingIds.add(idString);
+                        ObjId newId = ObjId.valueOf(idString);
+                        log.accept("Adding building with ID: " + newId);
+
+                        ObjMod.Obj buildingObj = w3u.addObj(newId, ObjId.valueOf(baseBuildingId));
+                        buildingObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                        buildingObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                        buildingObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                        if (iconFilename != null) {
+                            buildingObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                        }
+
+                        existingModelPaths.add(modelPath);
+
+                        if (options.getPlaceBuildings() && placer != null) {
+                            Coords2DF coords = placer.nextPosition();
+                            if (coords != null) {
+                                float cx = coords.getX().getVal();
+                                float cy = coords.getY().getVal();
+                                if (!dooUnitsParseFailed) {
+                                    DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
+                                    dooUnitObj.setTypeId(newId);
+                                    dooUnitObj.setSkinId(newId);
+                                    dooUnitObj.setPos(new Coords3DF(cx, cy, 0));
+                                    dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                                    dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
+                                    dooUnitObj.setLifePerc(-1);
+                                    dooUnitObj.setManaPerc(-1);
+                                }
+                                jassUnitPlacements.add(new UnitPlacement(idString, cx, cy, options.getUnitAngle()));
+                                log.accept("Placed building at: " + cx + ", " + cy);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Update war3map.j with BlzCreateUnitWithSkin calls when units are placed,
         // or clear the section when clearUnits is requested.
-        if ((options.getCreateUnits() && options.getPlaceUnits()) || options.getClearUnits()) {
+        if ((options.getCreateUnits() && options.getPlaceUnits())
+                || (options.getCreateBuildings() && options.getPlaceBuildings())
+                || options.getClearUnits()) {
             List<UnitPlacement> scriptPlacements = options.getClearUnits() ? List.of() : jassUnitPlacements;
             updateWarcraft3Script(mpq, scriptPlacements, log);
         }
