@@ -269,7 +269,7 @@ public class ImportConfigPanel extends JPanel {
         return filepath.toLowerCase().endsWith("_portrait.mdx");
     }
 
-    private JPanel buildConfigPanel() {
+    private JComponent buildConfigPanel() {
         JPanel main = new JPanel();
         main.setLayout(new BoxLayout(main, BoxLayout.Y_AXIS));
 
@@ -299,9 +299,9 @@ public class ImportConfigPanel extends JPanel {
         JScrollPane scroll = new JScrollPane(main);
         scroll.setBorder(null);
         scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        // Return the main panel (scroll pane is optional, panel handles layout naturally)
-        return main;
+        return scroll;
     }
 
     private JPanel buildCreationSection() {

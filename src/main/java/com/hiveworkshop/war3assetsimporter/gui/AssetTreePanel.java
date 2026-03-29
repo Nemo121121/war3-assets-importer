@@ -307,13 +307,17 @@ public class AssetTreePanel extends JPanel {
         }
 
         // Category display names
-        Map<MapAssetEntry.Category, String> categoryLabels = Map.of(
-                MapAssetEntry.Category.UNIT_MODEL, Messages.get("tree.units"),
-                MapAssetEntry.Category.BUILDING_MODEL, Messages.get("tree.buildings"),
-                MapAssetEntry.Category.DOODAD_MODEL, Messages.get("tree.doodads"),
-                MapAssetEntry.Category.TEXTURE, Messages.get("tree.textures"),
-                MapAssetEntry.Category.SOUND, Messages.get("tree.sounds")
-        );
+        Map<MapAssetEntry.Category, String> categoryLabels = new LinkedHashMap<>();
+        categoryLabels.put(MapAssetEntry.Category.UNIT_MODEL, Messages.get("tree.units"));
+        categoryLabels.put(MapAssetEntry.Category.BUILDING_MODEL, Messages.get("tree.buildings"));
+        categoryLabels.put(MapAssetEntry.Category.ITEM_MODEL, Messages.get("tree.items"));
+        categoryLabels.put(MapAssetEntry.Category.DESTRUCTIBLE_MODEL, Messages.get("tree.destructibles"));
+        categoryLabels.put(MapAssetEntry.Category.DOODAD_MODEL, Messages.get("tree.doodads"));
+        categoryLabels.put(MapAssetEntry.Category.ABILITY, Messages.get("tree.abilities"));
+        categoryLabels.put(MapAssetEntry.Category.BUFF_EFFECT, Messages.get("tree.buffsEffects"));
+        categoryLabels.put(MapAssetEntry.Category.UPGRADE, Messages.get("tree.upgrades"));
+        categoryLabels.put(MapAssetEntry.Category.TEXTURE, Messages.get("tree.textures"));
+        categoryLabels.put(MapAssetEntry.Category.SOUND, Messages.get("tree.sounds"));
 
         for (var entry : byCategory.entrySet()) {
             MapAssetEntry.Category cat = entry.getKey();
@@ -324,11 +328,51 @@ public class AssetTreePanel extends JPanel {
                     label, false, "__existing__/" + cat.folderName(),
                     catSize, assets.size());
             JCheckBoxTreeNode catNode = new JCheckBoxTreeNode(catData, false);
+
+            // Group by owner name for per-object subfolders (units, buildings, items, textures)
+            Map<String, List<MapAssetEntry>> byOwner = new LinkedHashMap<>();
             for (MapAssetEntry asset : assets) {
-                TreeNodeData leafData = new TreeNodeData(
-                        asset.filename(), true, "__existing__/" + asset.path(),
-                        Math.max(0, asset.size()), 1);
-                catNode.add(new JCheckBoxTreeNode(leafData, false));
+                String owner = (asset.ownerName() != null && !asset.ownerName().isEmpty())
+                        ? asset.ownerName() : "";
+                byOwner.computeIfAbsent(owner, k -> new ArrayList<>()).add(asset);
+            }
+
+            if (byOwner.size() > 1 || (byOwner.size() == 1 && !byOwner.containsKey(""))) {
+                // Multiple owners or a single named owner — create sub-groups
+                for (var ownerEntry : byOwner.entrySet()) {
+                    String ownerName = ownerEntry.getKey();
+                    List<MapAssetEntry> ownerAssets = ownerEntry.getValue();
+                    if (ownerName.isEmpty()) {
+                        // Ungrouped files go directly under category
+                        for (MapAssetEntry asset : ownerAssets) {
+                            TreeNodeData leafData = new TreeNodeData(
+                                    asset.filename(), true, "__existing__/" + asset.path(),
+                                    Math.max(0, asset.size()), 1);
+                            catNode.add(new JCheckBoxTreeNode(leafData, false));
+                        }
+                    } else {
+                        long ownerSize = ownerAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
+                        TreeNodeData ownerData = new TreeNodeData(
+                                ownerName, false, "__existing__/" + cat.folderName() + "/" + ownerName,
+                                ownerSize, ownerAssets.size());
+                        JCheckBoxTreeNode ownerNode = new JCheckBoxTreeNode(ownerData, false);
+                        for (MapAssetEntry asset : ownerAssets) {
+                            TreeNodeData leafData = new TreeNodeData(
+                                    asset.filename(), true, "__existing__/" + asset.path(),
+                                    Math.max(0, asset.size()), 1);
+                            ownerNode.add(new JCheckBoxTreeNode(leafData, false));
+                        }
+                        catNode.add(ownerNode);
+                    }
+                }
+            } else {
+                // All ungrouped — flat list
+                for (MapAssetEntry asset : assets) {
+                    TreeNodeData leafData = new TreeNodeData(
+                            asset.filename(), true, "__existing__/" + asset.path(),
+                            Math.max(0, asset.size()), 1);
+                    catNode.add(new JCheckBoxTreeNode(leafData, false));
+                }
             }
             existingRoot.add(catNode);
         }
