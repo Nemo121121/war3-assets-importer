@@ -359,7 +359,8 @@ public class ImportService {
                 .filter(s -> s != null)
                 .collect(Collectors.toCollection(HashSet::new));
 
-        String baseDoodadId = options.getDoodadOriginId() != null ? options.getDoodadOriginId() : "YTlb";
+        String baseDoodadId = (options.getDoodadOriginId() != null && !options.getDoodadOriginId().isEmpty())
+                ? options.getDoodadOriginId() : "YTlb";
 
         // ---- Load or create DOO (doodad placements) ----
         DOO doo;
@@ -566,32 +567,36 @@ public class ImportService {
                     log.accept("Doodad already defined for model: " + modelPath + ", skipping.");
                 } else {
                     String doodadIdString = DoodadIDGenerator.generateNextId(existingDoodadIds);
-                    existingDoodadIds.add(doodadIdString);
-                    ObjId newDoodadId = ObjId.valueOf(doodadIdString);
-                    log.accept("Adding doodad with ID: " + newDoodadId);
+                    if (doodadIdString == null) {
+                        log.accept("Warning: doodad ID space exhausted — cannot create more doodads.");
+                    } else {
+                        existingDoodadIds.add(doodadIdString);
+                        ObjId newDoodadId = ObjId.valueOf(doodadIdString);
+                        log.accept("Adding doodad with ID: " + newDoodadId);
 
-                    ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(baseDoodadId));
-                    doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                        ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(baseDoodadId));
+                        doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
 
-                    existingDoodadModelPaths.add(modelPath);
+                        existingDoodadModelPaths.add(modelPath);
 
-                    if (options.getPlaceDoodads() && placer != null) {
-                        Coords2DF coords = placer.nextPosition();
-                        if (coords != null) {
-                            float cx = coords.getX().getVal();
-                            float cy = coords.getY().getVal();
-                            if (!dooParseFailed) {
-                                DOO.Dood doodObj = doo.addDood();
-                                doodObj.setTypeId(newDoodadId);
-                                doodObj.setSkinId(newDoodadId);
-                                doodObj.setPos(new Coords3DF(cx, cy, 0));
-                                doodObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
-                                doodObj.setScale(new Coords3DF(1F, 1F, 1F));
-                                doodObj.setVariation(0);
-                                doodObj.setFlags(0);
-                                doodObj.setLifePerc(100);
+                        if (options.getPlaceDoodads() && placer != null) {
+                            Coords2DF coords = placer.nextPosition();
+                            if (coords != null) {
+                                float cx = coords.getX().getVal();
+                                float cy = coords.getY().getVal();
+                                if (!dooParseFailed) {
+                                    DOO.Dood doodObj = doo.addDood();
+                                    doodObj.setTypeId(newDoodadId);
+                                    doodObj.setSkinId(newDoodadId);
+                                    doodObj.setPos(new Coords3DF(cx, cy, 0));
+                                    doodObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                                    doodObj.setScale(new Coords3DF(1F, 1F, 1F));
+                                    doodObj.setVariation(0);
+                                    doodObj.setFlags(0);
+                                    doodObj.setLifePerc(100);
+                                }
+                                log.accept("Placed doodad at: " + cx + ", " + cy);
                             }
-                            log.accept("Placed doodad at: " + cx + ", " + cy);
                         }
                     }
                 }

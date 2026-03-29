@@ -706,6 +706,7 @@ public class MainFrame {
         if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return;
 
         File exportDir = chooser.getSelectedFile();
+        lastModelsDir = exportDir;
         log("Exporting " + selectedPaths.size() + " asset(s) to: " + exportDir.getAbsolutePath());
 
         statusBar.setIndeterminate(true);
@@ -727,9 +728,15 @@ public class MainFrame {
             @Override
             protected void done() {
                 statusBar.setIndeterminate(false);
-                statusBar.setString(Messages.get("status.done"));
                 exportAssetsButton.setEnabled(true);
-                log("Export complete.");
+                try {
+                    get();
+                    statusBar.setString(Messages.get("status.done"));
+                    log("Export complete.");
+                } catch (Exception ex) {
+                    statusBar.setString(Messages.get("status.error"));
+                    log("Export failed: " + ex.getMessage());
+                }
             }
         };
         worker.execute();
