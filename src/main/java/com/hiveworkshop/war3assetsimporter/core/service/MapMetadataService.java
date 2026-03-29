@@ -7,11 +7,12 @@ import com.hiveworkshop.war3assetsimporter.core.model.MapMetadata;
 import com.hiveworkshop.war3assetsimporter.core.model.UnitEntry;
 import com.hiveworkshop.war3assetsimporter.core.util.CameraBounds;
 import com.hiveworkshop.war3assetsimporter.core.util.StringUtils;
+import net.moonlightflower.wc3libs.bin.ObjMod;
 import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
 import net.moonlightflower.wc3libs.bin.app.DOO_UNITS;
 import net.moonlightflower.wc3libs.bin.app.IMP;
 import net.moonlightflower.wc3libs.bin.app.W3I;
-import net.moonlightflower.wc3libs.bin.app.objMod.W3D;
+import net.moonlightflower.wc3libs.bin.app.objMod.*;
 import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords3DF;
 import net.moonlightflower.wc3libs.misc.MetaFieldId;
@@ -251,20 +252,13 @@ public class MapMetadataService {
             "uaod", "ubon", "usap", "uslh", "utod", "utom", "ugrv", "uzg1",
             "uzg2", "unpl", "unp1", "unp2", "ugol");
 
+    /** Helper: maps a model/art path → (category, ownerName) for IMP classification. */
+    private record AssetClassification(Category category, String ownerName) {}
+
     /**
-     * Reads the import table ({@code war3map.imp}) from the map and returns a list of
-     * custom asset entries, classified into categories (unit models, building models,
-     * doodad models, textures, sounds).
-     *
-     * <p>Classification is based on:
-     * <ul>
-     *   <li>W3U (unit definitions) — MDX model paths referenced by custom units</li>
-     *   <li>W3D (doodad definitions) — MDX model paths referenced by custom doodads</li>
-     *   <li>Building detection — units whose base type is a known building ID</li>
-     *   <li>File extension — textures and sounds</li>
-     * </ul>
-     *
-     * <p>Returns an empty list when no import table exists or parsing fails.  Never throws.
+     * Reads all 7 Object Editor files (W3U, W3T, W3B, W3D, W3A, W3H, W3Q) and the
+     * import table (IMP) to build a comprehensive list of custom assets, classified by
+     * type with per-object owner names for subfolder grouping on export.
      *
      * @param mapFile the .w3x or .w3m map file
      * @return list of custom assets, possibly empty; never {@code null}
@@ -273,55 +267,98 @@ public class MapMetadataService {
         LOG.info("Loading existing assets: " + mapFile.getName());
         List<MapAssetEntry> entries = new ArrayList<>();
         try (JMpqEditor mpq = new JMpqEditor(mapFile, MPQOpenOption.FORCE_V0)) {
-            if (!mpq.hasFile(IMP.GAME_PATH)) return entries;
 
-            // ---- Build model→category lookup from W3U and W3D ----
-            Set<String> unitModelPaths = new HashSet<>();
-            Set<String> buildingModelPaths = new HashSet<>();
-            Set<String> doodadModelPaths = new HashSet<>();
+            // ---- Build path→classification lookup from all object files ----
+            // Maps normalised model/art path → (category, ownerName)
+            Map<String, AssetClassification> pathClassification = new HashMap<>();
 
-            // Read W3U: classify each custom unit's model as unit or building
-            if (mpq.hasFile("war3map.w3u")) {
-                try {
-                    W3U w3u = new W3U(new Wc3BinInputStream(
-                            new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3u"))));
-                    for (W3U.Obj obj : w3u.getObjsList()) {
-                        Object mdlVal = obj.get(MetaFieldId.valueOf("umdl"));
-                        if (mdlVal == null) continue;
-                        String modelPath = mdlVal.toString();
-                        String baseId = obj.getBaseId() != null ? obj.getBaseId().toString() : "";
-                        // Store both slash variants so IMP path matches regardless of separator
-                        if (BUILDING_BASE_IDS.contains(baseId)) {
-                            buildingModelPaths.add(modelPath);
-                            buildingModelPaths.add(normalizePath(modelPath));
-                        } else {
-                            unitModelPaths.add(modelPath);
-                            unitModelPaths.add(normalizePath(modelPath));
-                        }
-                    }
-                } catch (Exception e) {
-                    LOG.log(Level.WARNING, "Could not parse W3U for asset classification", e);
+            // W3U — Units and Buildings
+            readObjFile(mpq, "war3map.w3u", W3U.class, (obj) -> {
+                String baseId = obj.getBaseId() != null ? obj.getBaseId().toString() : "";
+                Category cat = BUILDING_BASE_IDS.contains(baseId) ? Category.BUILDING_MODEL : Category.UNIT_MODEL;
+                String name = getFieldStr(obj, "unam");
+                String modelPath = getFieldStr(obj, "umdl");
+                if (!modelPath.isEmpty()) {
+                    pathClassification.put(modelPath, new AssetClassification(cat, name));
+                    pathClassification.put(normalizePath(modelPath), new AssetClassification(cat, name));
                 }
-            }
+            });
 
-            // Read W3D: mark doodad model paths
-            if (mpq.hasFile("war3map.w3d")) {
-                try {
-                    W3D w3d = new W3D(new Wc3BinInputStream(
-                            new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3d"))));
-                    for (W3D.Dood obj : w3d.getObjsList()) {
-                        Object mdlVal = obj.get(MetaFieldId.valueOf("dfil"));
-                        if (mdlVal != null) {
-                            doodadModelPaths.add(mdlVal.toString());
-                            doodadModelPaths.add(normalizePath(mdlVal.toString()));
-                        }
+            // W3T — Items
+            readObjFile(mpq, "war3map.w3t", W3T.class, (obj) -> {
+                String name = getFieldStr(obj, "unam");
+                // Items use 'ifil' for the item file or 'umdl' for the model
+                for (String field : new String[]{"ifil", "umdl"}) {
+                    String path = getFieldStr(obj, field);
+                    if (!path.isEmpty()) {
+                        pathClassification.put(path, new AssetClassification(Category.ITEM_MODEL, name));
+                        pathClassification.put(normalizePath(path), new AssetClassification(Category.ITEM_MODEL, name));
                     }
-                } catch (Exception e) {
-                    LOG.log(Level.WARNING, "Could not parse W3D for asset classification", e);
                 }
-            }
+            });
+
+            // W3B — Destructibles
+            readObjFile(mpq, "war3map.w3b", W3B.class, (obj) -> {
+                String name = getFieldStr(obj, "bnam");
+                String modelPath = getFieldStr(obj, "bfil");
+                if (!modelPath.isEmpty()) {
+                    pathClassification.put(modelPath, new AssetClassification(Category.DESTRUCTIBLE_MODEL, name));
+                    pathClassification.put(normalizePath(modelPath), new AssetClassification(Category.DESTRUCTIBLE_MODEL, name));
+                }
+            });
+
+            // W3D — Doodads
+            readObjFile(mpq, "war3map.w3d", W3D.class, (obj) -> {
+                String name = getFieldStr(obj, "dnam");
+                if (name.isEmpty()) name = obj.getId().toString();
+                String modelPath = getFieldStr(obj, "dfil");
+                if (!modelPath.isEmpty()) {
+                    pathClassification.put(modelPath, new AssetClassification(Category.DOODAD_MODEL, name));
+                    pathClassification.put(normalizePath(modelPath), new AssetClassification(Category.DOODAD_MODEL, name));
+                }
+            });
+
+            // W3A — Abilities (no model, but may reference art/icons in IMP)
+            readObjFile(mpq, "war3map.w3a", W3A.class, (obj) -> {
+                String name = getFieldStr(obj, "anam");
+                if (name.isEmpty()) name = obj.getId().toString();
+                String artPath = getFieldStr(obj, "aart");
+                if (!artPath.isEmpty()) {
+                    pathClassification.put(artPath, new AssetClassification(Category.ABILITY, name));
+                    pathClassification.put(normalizePath(artPath), new AssetClassification(Category.ABILITY, name));
+                }
+            });
+
+            // W3H — Buffs/Effects
+            readObjFile(mpq, "war3map.w3h", W3H.class, (obj) -> {
+                String name = getFieldStr(obj, "fnam");
+                if (name.isEmpty()) name = obj.getId().toString();
+                String artPath = getFieldStr(obj, "fart");
+                if (!artPath.isEmpty()) {
+                    pathClassification.put(artPath, new AssetClassification(Category.BUFF_EFFECT, name));
+                    pathClassification.put(normalizePath(artPath), new AssetClassification(Category.BUFF_EFFECT, name));
+                }
+            });
+
+            // W3Q — Upgrades
+            readObjFile(mpq, "war3map.w3q", W3Q.class, (obj) -> {
+                String name = getFieldStr(obj, "gnam");
+                if (name.isEmpty()) name = obj.getId().toString();
+                String artPath = getFieldStr(obj, "gar1");
+                if (!artPath.isEmpty()) {
+                    pathClassification.put(artPath, new AssetClassification(Category.UPGRADE, name));
+                    pathClassification.put(normalizePath(artPath), new AssetClassification(Category.UPGRADE, name));
+                }
+            });
+
+            // ---- Also add non-file entries for custom abilities/buffs/upgrades ----
+            // These have no IMP entry but represent custom object data that should be exported
+            addNonFileEntries(mpq, "war3map.w3a", W3A.class, Category.ABILITY, "anam", entries);
+            addNonFileEntries(mpq, "war3map.w3h", W3H.class, Category.BUFF_EFFECT, "fnam", entries);
+            addNonFileEntries(mpq, "war3map.w3q", W3Q.class, Category.UPGRADE, "gnam", entries);
 
             // ---- Scan IMP entries and classify ----
+            if (!mpq.hasFile(IMP.GAME_PATH)) return entries;
             IMP imp = new IMP(new Wc3BinInputStream(
                     new ByteArrayInputStream(mpq.extractFileAsBytes(IMP.GAME_PATH))));
 
@@ -338,23 +375,26 @@ public class MapMetadataService {
                 boolean isSound = SOUND_EXTS.contains(ext);
                 if (!isMdx && !isTexture && !isSound) continue;
 
-                // Determine category — check both original and normalized path
+                // Look up classification from object files
+                AssetClassification cls = pathClassification.get(path);
+                if (cls == null) cls = pathClassification.get(normalizePath(path));
+
                 Category cat;
-                String normalizedPath = normalizePath(path);
-                if (isMdx) {
-                    if (buildingModelPaths.contains(path) || buildingModelPaths.contains(normalizedPath)) {
-                        cat = Category.BUILDING_MODEL;
-                    } else if (doodadModelPaths.contains(path) || doodadModelPaths.contains(normalizedPath)) {
-                        cat = Category.DOODAD_MODEL;
-                    } else if (unitModelPaths.contains(path) || unitModelPaths.contains(normalizedPath)) {
-                        cat = Category.UNIT_MODEL;
-                    } else {
-                        cat = Category.UNIT_MODEL; // default for uncategorised MDX
-                    }
+                String ownerName = "";
+                if (cls != null) {
+                    cat = cls.category();
+                    ownerName = cls.ownerName();
+                } else if (isMdx) {
+                    cat = Category.UNIT_MODEL; // default for uncategorised MDX
                 } else if (isSound) {
                     cat = Category.SOUND;
                 } else {
                     cat = Category.TEXTURE;
+                }
+
+                // For textures, try to find owner by matching filename prefix to a known model
+                if (isTexture && ownerName.isEmpty()) {
+                    ownerName = guessTextureOwner(path, pathClassification);
                 }
 
                 long size = -1;
@@ -366,13 +406,94 @@ public class MapMetadataService {
                 } catch (Exception ignored) {
                 }
 
-                entries.add(new MapAssetEntry(path, size, cat));
+                entries.add(new MapAssetEntry(path, size, cat, ownerName));
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Could not load existing assets from " + mapFile.getName(), e);
         }
         LOG.fine("Loaded " + entries.size() + " existing asset(s) from " + mapFile.getName());
         return entries;
+    }
+
+    /** Reads an ObjMod file from the MPQ and passes each object to the consumer. */
+    @SuppressWarnings("unchecked")
+    private <T extends ObjMod<?>> void readObjFile(JMpqEditor mpq, String fileName,
+                                                    Class<T> cls,
+                                                    java.util.function.Consumer<ObjMod.Obj> consumer) {
+        if (!mpq.hasFile(fileName)) return;
+        try {
+            ObjMod<?> objMod = cls.getConstructor(Wc3BinInputStream.class)
+                    .newInstance(new Wc3BinInputStream(
+                            new ByteArrayInputStream(mpq.extractFileAsBytes(fileName))));
+            for (ObjMod.Obj obj : objMod.getObjsList()) {
+                consumer.accept(obj);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Could not parse " + fileName + " for asset classification", e);
+        }
+    }
+
+    /** Adds non-file entries for custom abilities/buffs/upgrades (they have definitions but no IMP entry). */
+    @SuppressWarnings("unchecked")
+    private <T extends ObjMod<?>> void addNonFileEntries(JMpqEditor mpq, String fileName,
+                                                          Class<T> cls, Category category,
+                                                          String nameField,
+                                                          List<MapAssetEntry> entries) {
+        if (!mpq.hasFile(fileName)) return;
+        try {
+            ObjMod<?> objMod = cls.getConstructor(Wc3BinInputStream.class)
+                    .newInstance(new Wc3BinInputStream(
+                            new ByteArrayInputStream(mpq.extractFileAsBytes(fileName))));
+            for (ObjMod.Obj obj : objMod.getObjsList()) {
+                String name = getFieldStr(obj, nameField);
+                if (name.isEmpty()) name = obj.getId().toString();
+                // Use the object ID as a pseudo-path since these aren't real files
+                String pseudoPath = "__objdef__/" + category.folderName() + "/" + obj.getId();
+                entries.add(new MapAssetEntry(pseudoPath, 0, category, name));
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Could not read " + fileName + " for non-file entries", e);
+        }
+    }
+
+    /** Gets a string field value from an ObjMod.Obj, returning "" if not set. */
+    private static String getFieldStr(ObjMod.Obj obj, String fieldId) {
+        try {
+            Object val = obj.get(MetaFieldId.valueOf(fieldId));
+            return val != null ? val.toString() : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Tries to match a texture filename to a known model owner by checking if the
+     * texture name (without BTN/DISBTN prefix) matches any model's basename.
+     */
+    private static String guessTextureOwner(String texturePath,
+                                            Map<String, AssetClassification> classifications) {
+        String texName = texturePath.replace('\\', '/');
+        int sep = texName.lastIndexOf('/');
+        if (sep >= 0) texName = texName.substring(sep + 1);
+        int dot = texName.lastIndexOf('.');
+        if (dot > 0) texName = texName.substring(0, dot);
+        // Strip BTN/DISBTN prefix
+        String stripped = texName;
+        if (stripped.toLowerCase().startsWith("disbtn")) stripped = stripped.substring(6);
+        else if (stripped.toLowerCase().startsWith("btn")) stripped = stripped.substring(3);
+
+        // Check all classified model paths for a basename match
+        for (var entry : classifications.entrySet()) {
+            String modelPath = entry.getKey().replace('\\', '/');
+            int mSep = modelPath.lastIndexOf('/');
+            String modelName = mSep >= 0 ? modelPath.substring(mSep + 1) : modelPath;
+            int mDot = modelName.lastIndexOf('.');
+            if (mDot > 0) modelName = modelName.substring(0, mDot);
+            if (modelName.equalsIgnoreCase(stripped)) {
+                return entry.getValue().ownerName();
+            }
+        }
+        return "";
     }
 
     /**

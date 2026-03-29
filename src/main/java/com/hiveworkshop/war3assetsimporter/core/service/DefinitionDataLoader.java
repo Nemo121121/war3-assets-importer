@@ -56,12 +56,26 @@ public class DefinitionDataLoader {
         if (log == null) log = s -> {};
         Map<String, SavedDefinition> result = new LinkedHashMap<>();
 
-        // Check root folder and each standard subfolder
-        String[] subFolders = {"", "units", "buildings", "doodads"};
+        // Check root folder, each standard subfolder, and per-object subfolders within them
+        String[] subFolders = {"", "units", "buildings", "items", "destructibles",
+                "doodads", "abilities", "buffs_effects", "upgrades"};
+        List<File> dirsToScan = new ArrayList<>();
         for (String sub : subFolders) {
             File dir = sub.isEmpty() ? rootFolder : new File(rootFolder, sub);
+            dirsToScan.add(dir);
+            // Also scan per-object subfolders (e.g. units/Footman/, units/Archer/)
+            if (dir.isDirectory()) {
+                File[] children = dir.listFiles(File::isDirectory);
+                if (children != null) {
+                    for (File child : children) dirsToScan.add(child);
+                }
+            }
+        }
+        for (File dir : dirsToScan) {
             File defFile = new File(dir, "definitions.json");
             if (!defFile.exists()) continue;
+            String sub = rootFolder.equals(dir) ? ""
+                    : rootFolder.toPath().relativize(dir.toPath()).toString();
 
             try {
                 String json = Files.readString(defFile.toPath(), StandardCharsets.UTF_8);
