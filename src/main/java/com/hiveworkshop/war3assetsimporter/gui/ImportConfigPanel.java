@@ -54,6 +54,12 @@ public class ImportConfigPanel extends JPanel {
     private final JTextField doodadOriginField;
     private final JLabel doodadOriginIdLabel = new JLabel();
 
+    // ---- Building creation form fields ----
+    private final JCheckBox createBuildingsBox;
+    private final JCheckBox placeBuildingsBox;
+    private final JTextField buildingOriginField;
+    private final JLabel buildingOriginIdLabel = new JLabel();
+
     // ---- General import options ----
     private final JCheckBox flattenPathsBox;
 
@@ -78,6 +84,7 @@ public class ImportConfigPanel extends JPanel {
     // ---- Section panels (stored for i18n border refresh) ----
     private JPanel creationSection;
     private JPanel doodadSection;
+    private JPanel buildingSection;
     private JPanel placementSection;
     private JPanel namingSection;
     private JLabel outputLabel;
@@ -119,6 +126,31 @@ public class ImportConfigPanel extends JPanel {
         placeDoodadsBox = new JCheckBox();
         doodadOriginField = new JTextField("YTlb", 6);
 
+        // ---- Building creation fields ----
+        createBuildingsBox = new JCheckBox();
+        placeBuildingsBox = new JCheckBox();
+        buildingOriginField = new JTextField("hhou", 6);
+
+        // ---- Mutual exclusion: only one of units/doodads/buildings can be active ----
+        createUnitsBox.addActionListener(e -> {
+            if (createUnitsBox.isSelected()) {
+                createDoodadsBox.setSelected(false);
+                createBuildingsBox.setSelected(false);
+            }
+        });
+        createDoodadsBox.addActionListener(e -> {
+            if (createDoodadsBox.isSelected()) {
+                createUnitsBox.setSelected(false);
+                createBuildingsBox.setSelected(false);
+            }
+        });
+        createBuildingsBox.addActionListener(e -> {
+            if (createBuildingsBox.isSelected()) {
+                createUnitsBox.setSelected(false);
+                createDoodadsBox.setSelected(false);
+            }
+        });
+
         // ---- Unit naming fields ----
         autoNameUnitsBox = new JCheckBox(Messages.get("checkbox.autoNameUnits"));
         autoAssignIconBox = new JCheckBox(Messages.get("checkbox.autoAssignIcon"));
@@ -151,6 +183,11 @@ public class ImportConfigPanel extends JPanel {
         createDoodadsBox.setToolTipText(Messages.get("tooltip.createDoodads"));
         placeDoodadsBox.setToolTipText(Messages.get("tooltip.placeDoodads"));
         doodadOriginField.setToolTipText(Messages.get("tooltip.doodadOriginId"));
+
+        // ---- Building tooltips ----
+        createBuildingsBox.setToolTipText(Messages.get("tooltip.createBuildings"));
+        placeBuildingsBox.setToolTipText(Messages.get("tooltip.placeBuildings"));
+        buildingOriginField.setToolTipText(Messages.get("tooltip.buildingOriginId"));
 
         // ---- Output path field ----
         outputPathField = new JTextField();
@@ -242,6 +279,10 @@ public class ImportConfigPanel extends JPanel {
 
         // ---- Doodad Creation Section ----
         main.add(buildDoodadSection());
+        main.add(Box.createVerticalStrut(10));
+
+        // ---- Building Creation Section ----
+        main.add(buildBuildingSection());
         main.add(Box.createVerticalStrut(10));
 
         // ---- Unit Placement Section ----
@@ -347,6 +388,42 @@ public class ImportConfigPanel extends JPanel {
         fc.insets = new Insets(5, 2, 3, 10);
 
         addRow(p, lc, fc, row++, doodadOriginIdLabel, doodadOriginField);
+
+        return p;
+    }
+
+    private JPanel buildBuildingSection() {
+        buildingSection = new JPanel(new GridBagLayout());
+        JPanel p = buildingSection;
+        p.setBorder(BorderFactory.createTitledBorder(Messages.get("section.buildingCreation")));
+
+        GridBagConstraints cc = new GridBagConstraints();
+        cc.gridx = 0;
+        cc.gridwidth = 2;
+        cc.anchor = GridBagConstraints.WEST;
+        cc.insets = new Insets(3, 10, 3, 10);
+
+        int row = 0;
+        cc.gridy = row++;
+        createBuildingsBox.setText(Messages.get("checkbox.createBuildings"));
+        p.add(createBuildingsBox, cc);
+
+        cc.gridy = row++;
+        placeBuildingsBox.setText(Messages.get("checkbox.placeBuildings"));
+        p.add(placeBuildingsBox, cc);
+
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.gridx = 0;
+        lc.anchor = GridBagConstraints.WEST;
+        lc.insets = new Insets(5, 10, 3, 5);
+
+        GridBagConstraints fc = new GridBagConstraints();
+        fc.gridx = 1;
+        fc.fill = GridBagConstraints.HORIZONTAL;
+        fc.weightx = 1.0;
+        fc.insets = new Insets(5, 2, 3, 10);
+
+        addRow(p, lc, fc, row++, buildingOriginIdLabel, buildingOriginField);
 
         return p;
     }
@@ -713,6 +790,19 @@ public class ImportConfigPanel extends JPanel {
         return doodadOriginField.getText().trim();
     }
 
+    // ---- Building Creation Getters ----
+    public boolean isCreateBuildingsSelected() {
+        return createBuildingsBox.isSelected();
+    }
+
+    public boolean isPlaceBuildingsSelected() {
+        return placeBuildingsBox.isSelected();
+    }
+
+    public String getBuildingOriginId() {
+        return buildingOriginField.getText().trim();
+    }
+
     /**
      * Returns the world-space placement bounds for the import.
      *
@@ -795,6 +885,22 @@ public class ImportConfigPanel extends JPanel {
         createDoodadsBox.setSelected(cfg.isCreateDoodads());
         placeDoodadsBox.setSelected(cfg.isPlaceDoodads());
         doodadOriginField.setText(cfg.getDoodadOriginId());
+        createBuildingsBox.setSelected(cfg.isCreateBuildings());
+        placeBuildingsBox.setSelected(cfg.isPlaceBuildings());
+        buildingOriginField.setText(cfg.getBuildingOriginId());
+
+        // Enforce mutual exclusion — setSelected() doesn't fire ActionListeners,
+        // so we must manually ensure only one of units/doodads/buildings is active.
+        if (createUnitsBox.isSelected()) {
+            createDoodadsBox.setSelected(false);
+            createBuildingsBox.setSelected(false);
+        } else if (createDoodadsBox.isSelected()) {
+            createUnitsBox.setSelected(false);
+            createBuildingsBox.setSelected(false);
+        } else if (createBuildingsBox.isSelected()) {
+            createUnitsBox.setSelected(false);
+            createDoodadsBox.setSelected(false);
+        }
 
         // Restore placing order combo
         String savedOrder = cfg.getPlacingOrder();
@@ -842,6 +948,9 @@ public class ImportConfigPanel extends JPanel {
         cfg.setCreateDoodads(createDoodadsBox.isSelected());
         cfg.setPlaceDoodads(placeDoodadsBox.isSelected());
         cfg.setDoodadOriginId(doodadOriginField.getText().trim());
+        cfg.setCreateBuildings(createBuildingsBox.isSelected());
+        cfg.setPlaceBuildings(placeBuildingsBox.isSelected());
+        cfg.setBuildingOriginId(buildingOriginField.getText().trim());
     }
 
     // -------------------------------------------------------------------------
@@ -871,6 +980,14 @@ public class ImportConfigPanel extends JPanel {
         // Section titled borders — setBorder() triggers revalidate+repaint on each panel
         creationSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.unitCreation")));
         doodadSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.doodadCreation")));
+        // Building labels
+        createBuildingsBox.setText(Messages.get("checkbox.createBuildings"));
+        placeBuildingsBox.setText(Messages.get("checkbox.placeBuildings"));
+        buildingOriginIdLabel.setText(Messages.get("label.buildingOriginId"));
+        createBuildingsBox.setToolTipText(Messages.get("tooltip.createBuildings"));
+        placeBuildingsBox.setToolTipText(Messages.get("tooltip.placeBuildings"));
+        buildingOriginField.setToolTipText(Messages.get("tooltip.buildingOriginId"));
+        buildingSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.buildingCreation")));
         placementSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.unitPlacement")));
         namingSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.unitNaming")));
         // Combo boxes re-render their items via toString()

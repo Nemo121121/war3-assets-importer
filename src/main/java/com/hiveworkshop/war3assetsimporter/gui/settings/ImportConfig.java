@@ -51,6 +51,11 @@ public class ImportConfig {
     private boolean placeDoodads = false;
     private String doodadOriginId = "YTlb";
 
+    // ---- Building Creation ----
+    private boolean createBuildings = false;
+    private boolean placeBuildings = false;
+    private String buildingOriginId = "hhou";
+
     // -------------------------------------------------------------------------
     // Load / save
     // -------------------------------------------------------------------------
@@ -78,6 +83,9 @@ public class ImportConfig {
             if (obj.has("createDoodads"))       createDoodads        = obj.get("createDoodads").getAsBoolean();
             if (obj.has("placeDoodads"))        placeDoodads         = obj.get("placeDoodads").getAsBoolean();
             if (obj.has("doodadOriginId"))      doodadOriginId       = obj.get("doodadOriginId").getAsString();
+            if (obj.has("createBuildings"))    createBuildings      = obj.get("createBuildings").getAsBoolean();
+            if (obj.has("placeBuildings"))     placeBuildings       = obj.get("placeBuildings").getAsBoolean();
+            if (obj.has("buildingOriginId"))   buildingOriginId     = obj.get("buildingOriginId").getAsString();
         } catch (IOException e) {
             System.err.println("Warning: could not load import-config.json — using defaults.");
         }
@@ -105,6 +113,9 @@ public class ImportConfig {
             obj.addProperty("createDoodads",       createDoodads);
             obj.addProperty("placeDoodads",        placeDoodads);
             obj.addProperty("doodadOriginId",      doodadOriginId);
+            obj.addProperty("createBuildings",    createBuildings);
+            obj.addProperty("placeBuildings",     placeBuildings);
+            obj.addProperty("buildingOriginId",   buildingOriginId);
             try (FileWriter writer = new FileWriter(CONFIG_FILE.toFile())) {
                 GSON.toJson(obj, writer);
             }
@@ -170,4 +181,13 @@ public class ImportConfig {
 
     public String getDoodadOriginId()      { return doodadOriginId; }
     public void setDoodadOriginId(String v){ doodadOriginId = v; }
+
+    public boolean isCreateBuildings()       { return createBuildings; }
+    public void setCreateBuildings(boolean v){ createBuildings = v; }
+
+    public boolean isPlaceBuildings()        { return placeBuildings; }
+    public void setPlaceBuildings(boolean v) { placeBuildings = v; }
+
+    public String getBuildingOriginId()      { return buildingOriginId; }
+    public void setBuildingOriginId(String v){ buildingOriginId = v; }
 }

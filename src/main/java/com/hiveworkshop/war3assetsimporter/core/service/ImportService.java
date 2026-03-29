@@ -362,6 +362,9 @@ public class ImportService {
         String baseDoodadId = (options.getDoodadOriginId() != null && !options.getDoodadOriginId().isEmpty())
                 ? options.getDoodadOriginId() : "YTlb";
 
+        String baseBuildingId = (options.getBuildingOriginId() != null && !options.getBuildingOriginId().isEmpty())
+                ? options.getBuildingOriginId() : "hhou";
+
         // ---- Load or create DOO (doodad placements) ----
         DOO doo;
         boolean dooParseFailed = false;
@@ -379,6 +382,10 @@ public class ImportService {
         } else {
             doo = new DOO();
         }
+
+        // ---- Load saved definitions from a previous export (definitions.json) ----
+        Map<String, DefinitionDataLoader.SavedDefinition> savedDefs =
+                DefinitionDataLoader.loadAll(rootFolder, log);
 
         Path baseFolderPath = rootFolder.toPath().toAbsolutePath().normalize();
         HashMap<String, File> insertedTextures = new HashMap<>();
@@ -478,18 +485,38 @@ public class ImportService {
                     String iconFilename = iconByModelName.get(modelBaseName);
 
                     // ---- Base unit definition ----
+                    // Check for saved definition data from a previous export
+                    DefinitionDataLoader.SavedDefinition savedUnitDef = findSavedDef(savedDefs, modelPath, f.getName());
+
+                    String effectiveBaseId = (savedUnitDef != null && !savedUnitDef.baseId().isEmpty())
+                            ? savedUnitDef.baseId() : baseUnitId;
+
                     String idString = UnitIDGenerator.generateNextId(existingIds);
                     existingIds.add(idString);
                     ObjId newId = ObjId.valueOf(idString);
                     log.accept("Adding unit with ID: " + newId);
 
-                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(baseUnitId));
-                    unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
-                    unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
-                    unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
-                    if (iconFilename != null) {
-                        unitObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
-                        log.accept("Assigned icon: " + iconFilename);
+                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(effectiveBaseId));
+
+                    if (savedUnitDef != null) {
+                        // Apply ALL saved fields from the exported definition
+                        DefinitionDataLoader.applyFields(unitObj, savedUnitDef, "umdl", log);
+                        // Override model path to point to the new import path
+                        unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                        // Override name if auto-naming is enabled
+                        if (options.getAutoNameUnits()) {
+                            unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                        }
+                        log.accept("Restored saved definition (base: " + effectiveBaseId + ")");
+                    } else {
+                        // No saved data — use basic fields as before
+                        unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                        unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                        unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                        if (iconFilename != null) {
+                            unitObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                            log.accept("Assigned icon: " + iconFilename);
+                        }
                     }
 
                     existingModelPaths.add(modelPath);
@@ -574,8 +601,18 @@ public class ImportService {
                         ObjId newDoodadId = ObjId.valueOf(doodadIdString);
                         log.accept("Adding doodad with ID: " + newDoodadId);
 
-                        ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(baseDoodadId));
-                        doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                        DefinitionDataLoader.SavedDefinition savedDoodDef = findSavedDef(savedDefs, modelPath, f.getName());
+                        String effectiveDoodBase = (savedDoodDef != null && !savedDoodDef.baseId().isEmpty())
+                                ? savedDoodDef.baseId() : baseDoodadId;
+
+                        ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(effectiveDoodBase));
+                        if (savedDoodDef != null) {
+                            DefinitionDataLoader.applyFields(doodadObj, savedDoodDef, "dfil", log);
+                            doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                            log.accept("Restored saved doodad definition (base: " + effectiveDoodBase + ")");
+                        } else {
+                            doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                        }
 
                         existingDoodadModelPaths.add(modelPath);
 
@@ -601,11 +638,85 @@ public class ImportService {
                     }
                 }
             }
+
+            // ---- Building definition for this MDX file ----
+            // Buildings are W3U entries with a building-type base unit (e.g. hhou).
+            if (f.getName().toLowerCase().endsWith(".mdx") && !isPortrait && options.getCreateBuildings()) {
+                String modelPath = options.getFlattenPaths() ? f.getName() : filePath.toString();
+                if (existingModelPaths.contains(modelPath)) {
+                    log.accept("Building already defined for model: " + modelPath + ", skipping.");
+                } else {
+                    String unitName;
+                    if (options.getAutoNameUnits()) {
+                        String baseFilename = f.getName().replaceAll("(?i)\\.mdx$", "");
+                        unitName = NameFormatter.format(baseFilename, options.getNameFormat());
+                    } else {
+                        unitName = f.getName().replaceAll("(?i)\\.mdx$", "");
+                    }
+
+                    String modelBaseName = f.getName().replaceAll("(?i)\\.mdx$", "").toLowerCase();
+                    String iconFilename = iconByModelName.get(modelBaseName);
+
+                    String idString = UnitIDGenerator.generateNextId(existingIds);
+                    if (idString == null) {
+                        log.accept("Warning: unit ID space exhausted — cannot create more buildings.");
+                    } else {
+                        existingIds.add(idString);
+                        ObjId newId = ObjId.valueOf(idString);
+                        log.accept("Adding building with ID: " + newId);
+
+                        DefinitionDataLoader.SavedDefinition savedBldgDef = findSavedDef(savedDefs, modelPath, f.getName());
+                        String effectiveBldgBase = (savedBldgDef != null && !savedBldgDef.baseId().isEmpty())
+                                ? savedBldgDef.baseId() : baseBuildingId;
+
+                        ObjMod.Obj buildingObj = w3u.addObj(newId, ObjId.valueOf(effectiveBldgBase));
+                        if (savedBldgDef != null) {
+                            DefinitionDataLoader.applyFields(buildingObj, savedBldgDef, "umdl", log);
+                            buildingObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                            if (options.getAutoNameUnits()) {
+                                buildingObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                            }
+                            log.accept("Restored saved building definition (base: " + effectiveBldgBase + ")");
+                        } else {
+                            buildingObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                            buildingObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                            buildingObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                            if (iconFilename != null) {
+                                buildingObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                            }
+                        }
+
+                        existingModelPaths.add(modelPath);
+
+                        if (options.getPlaceBuildings() && placer != null) {
+                            Coords2DF coords = placer.nextPosition();
+                            if (coords != null) {
+                                float cx = coords.getX().getVal();
+                                float cy = coords.getY().getVal();
+                                if (!dooUnitsParseFailed) {
+                                    DOO_UNITS.Obj dooUnitObj = dooUnits.addObj();
+                                    dooUnitObj.setTypeId(newId);
+                                    dooUnitObj.setSkinId(newId);
+                                    dooUnitObj.setPos(new Coords3DF(cx, cy, 0));
+                                    dooUnitObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                                    dooUnitObj.setScale(new Coords3DF(1F, 1F, 1F));
+                                    dooUnitObj.setLifePerc(-1);
+                                    dooUnitObj.setManaPerc(-1);
+                                }
+                                jassUnitPlacements.add(new UnitPlacement(idString, cx, cy, options.getUnitAngle()));
+                                log.accept("Placed building at: " + cx + ", " + cy);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Update war3map.j with BlzCreateUnitWithSkin calls when units are placed,
         // or clear the section when clearUnits is requested.
-        if ((options.getCreateUnits() && options.getPlaceUnits()) || options.getClearUnits()) {
+        if ((options.getCreateUnits() && options.getPlaceUnits())
+                || (options.getCreateBuildings() && options.getPlaceBuildings())
+                || options.getClearUnits()) {
             List<UnitPlacement> scriptPlacements = options.getClearUnits() ? List.of() : jassUnitPlacements;
             updateWarcraft3Script(mpq, scriptPlacements, log);
         }
@@ -688,6 +799,40 @@ public class ImportService {
             obj.write(out);
         }
         return baos.toByteArray();
+    }
+
+    /**
+     * Looks up a saved definition by model path. Tries the full path first
+     * (with both slash directions), then falls back to filename-only match
+     * (for when flatten-paths changes the path between export and import).
+     */
+    private static DefinitionDataLoader.SavedDefinition findSavedDef(
+            Map<String, DefinitionDataLoader.SavedDefinition> savedDefs,
+            String modelPath, String filename) {
+        if (savedDefs.isEmpty()) return null;
+
+        // Exact match
+        DefinitionDataLoader.SavedDefinition def = savedDefs.get(modelPath);
+        if (def != null) return def;
+
+        // Try with opposite slash direction (MPQ uses backslash, file system uses forward)
+        String altPath = modelPath.contains("\\")
+                ? modelPath.replace('\\', '/')
+                : modelPath.replace('/', '\\');
+        def = savedDefs.get(altPath);
+        if (def != null) return def;
+
+        // Filename-only fallback (handles flatten-paths mismatch)
+        for (var entry : savedDefs.entrySet()) {
+            String key = entry.getKey();
+            // Compare just the filename portion
+            int sep = Math.max(key.lastIndexOf('/'), key.lastIndexOf('\\'));
+            String keyFilename = sep >= 0 ? key.substring(sep + 1) : key;
+            if (keyFilename.equalsIgnoreCase(filename)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private record UnitPlacement(String id, float x, float y, float angle) {

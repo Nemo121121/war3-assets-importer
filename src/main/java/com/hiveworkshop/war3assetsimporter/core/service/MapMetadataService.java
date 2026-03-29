@@ -2,6 +2,7 @@ package com.hiveworkshop.war3assetsimporter.core.service;
 
 import com.hiveworkshop.war3assetsimporter.core.model.ExistingUnit;
 import com.hiveworkshop.war3assetsimporter.core.model.MapAssetEntry;
+import com.hiveworkshop.war3assetsimporter.core.model.MapAssetEntry.Category;
 import com.hiveworkshop.war3assetsimporter.core.model.MapMetadata;
 import com.hiveworkshop.war3assetsimporter.core.model.UnitEntry;
 import com.hiveworkshop.war3assetsimporter.core.util.CameraBounds;
@@ -10,6 +11,7 @@ import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
 import net.moonlightflower.wc3libs.bin.app.DOO_UNITS;
 import net.moonlightflower.wc3libs.bin.app.IMP;
 import net.moonlightflower.wc3libs.bin.app.W3I;
+import net.moonlightflower.wc3libs.bin.app.objMod.W3D;
 import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords3DF;
 import net.moonlightflower.wc3libs.misc.MetaFieldId;
@@ -21,9 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -82,6 +82,11 @@ public class MapMetadataService {
 
         // 3. Not a TRIGSTR reference — it is the literal string value
         return raw.trim();
+    }
+
+    /** Swaps backslashes to forward slashes for path comparison. */
+    private static String normalizePath(String path) {
+        return path.replace('\\', '/');
     }
 
     private static int readUInt32LE(byte[] bytes, int offset) {
@@ -228,10 +233,36 @@ public class MapMetadataService {
         return entries;
     }
 
+    private static final Set<String> TEXTURE_EXTS = Set.of(
+            ".blp", ".dds", ".tga", ".png", ".jpg", ".jpeg", ".bmp", ".gif");
+    private static final Set<String> SOUND_EXTS = Set.of(
+            ".wav", ".mp3", ".ogg", ".flac");
+    /**
+     * Well-known WC3 building base type IDs.  If a custom unit in W3U inherits from
+     * one of these, it is categorised as a building rather than a regular unit.
+     */
+    private static final Set<String> BUILDING_BASE_IDS = Set.of(
+            "hhou", "hbar", "halt", "hatw", "harm", "hars", "hbla", "hcas", "hctw",
+            "hgtw", "hlum", "htow", "hvlt", "hwtw",
+            "oalt", "obar", "obea", "ofor", "ofrt", "ogre", "osld", "ostr",
+            "otrb", "otto", "ovln", "owtw",
+            "eate", "etrp", "edob", "eden", "edos", "egol", "emow", "etoa",
+            "etoe", "etol", "eaoe", "eaom", "eaow",
+            "uaod", "ubon", "usap", "uslh", "utod", "utom", "ugrv", "uzg1",
+            "uzg2", "unpl", "unp1", "unp2", "ugol");
+
     /**
      * Reads the import table ({@code war3map.imp}) from the map and returns a list of
-     * custom asset entries (MDX models and textures).  Each entry contains the in-MPQ
-     * path, file size (when available), and whether it is an MDX model.
+     * custom asset entries, classified into categories (unit models, building models,
+     * doodad models, textures, sounds).
+     *
+     * <p>Classification is based on:
+     * <ul>
+     *   <li>W3U (unit definitions) — MDX model paths referenced by custom units</li>
+     *   <li>W3D (doodad definitions) — MDX model paths referenced by custom doodads</li>
+     *   <li>Building detection — units whose base type is a known building ID</li>
+     *   <li>File extension — textures and sounds</li>
+     * </ul>
      *
      * <p>Returns an empty list when no import table exists or parsing fails.  Never throws.
      *
@@ -244,6 +275,53 @@ public class MapMetadataService {
         try (JMpqEditor mpq = new JMpqEditor(mapFile, MPQOpenOption.FORCE_V0)) {
             if (!mpq.hasFile(IMP.GAME_PATH)) return entries;
 
+            // ---- Build model→category lookup from W3U and W3D ----
+            Set<String> unitModelPaths = new HashSet<>();
+            Set<String> buildingModelPaths = new HashSet<>();
+            Set<String> doodadModelPaths = new HashSet<>();
+
+            // Read W3U: classify each custom unit's model as unit or building
+            if (mpq.hasFile("war3map.w3u")) {
+                try {
+                    W3U w3u = new W3U(new Wc3BinInputStream(
+                            new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3u"))));
+                    for (W3U.Obj obj : w3u.getObjsList()) {
+                        Object mdlVal = obj.get(MetaFieldId.valueOf("umdl"));
+                        if (mdlVal == null) continue;
+                        String modelPath = mdlVal.toString();
+                        String baseId = obj.getBaseId() != null ? obj.getBaseId().toString() : "";
+                        // Store both slash variants so IMP path matches regardless of separator
+                        if (BUILDING_BASE_IDS.contains(baseId)) {
+                            buildingModelPaths.add(modelPath);
+                            buildingModelPaths.add(normalizePath(modelPath));
+                        } else {
+                            unitModelPaths.add(modelPath);
+                            unitModelPaths.add(normalizePath(modelPath));
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, "Could not parse W3U for asset classification", e);
+                }
+            }
+
+            // Read W3D: mark doodad model paths
+            if (mpq.hasFile("war3map.w3d")) {
+                try {
+                    W3D w3d = new W3D(new Wc3BinInputStream(
+                            new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3d"))));
+                    for (W3D.Dood obj : w3d.getObjsList()) {
+                        Object mdlVal = obj.get(MetaFieldId.valueOf("dfil"));
+                        if (mdlVal != null) {
+                            doodadModelPaths.add(mdlVal.toString());
+                            doodadModelPaths.add(normalizePath(mdlVal.toString()));
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, "Could not parse W3D for asset classification", e);
+                }
+            }
+
+            // ---- Scan IMP entries and classify ----
             IMP imp = new IMP(new Wc3BinInputStream(
                     new ByteArrayInputStream(mpq.extractFileAsBytes(IMP.GAME_PATH))));
 
@@ -252,12 +330,32 @@ public class MapMetadataService {
                 if (path == null || path.isBlank()) continue;
 
                 String lower = path.toLowerCase();
-                boolean isMdx = lower.endsWith(".mdx");
-                boolean isTexture = lower.endsWith(".blp") || lower.endsWith(".dds")
-                        || lower.endsWith(".tga") || lower.endsWith(".png")
-                        || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
-                        || lower.endsWith(".bmp") || lower.endsWith(".gif");
-                if (!isMdx && !isTexture) continue;
+                String ext = lower.lastIndexOf('.') >= 0
+                        ? lower.substring(lower.lastIndexOf('.')) : "";
+
+                boolean isMdx = ext.equals(".mdx");
+                boolean isTexture = TEXTURE_EXTS.contains(ext);
+                boolean isSound = SOUND_EXTS.contains(ext);
+                if (!isMdx && !isTexture && !isSound) continue;
+
+                // Determine category — check both original and normalized path
+                Category cat;
+                String normalizedPath = normalizePath(path);
+                if (isMdx) {
+                    if (buildingModelPaths.contains(path) || buildingModelPaths.contains(normalizedPath)) {
+                        cat = Category.BUILDING_MODEL;
+                    } else if (doodadModelPaths.contains(path) || doodadModelPaths.contains(normalizedPath)) {
+                        cat = Category.DOODAD_MODEL;
+                    } else if (unitModelPaths.contains(path) || unitModelPaths.contains(normalizedPath)) {
+                        cat = Category.UNIT_MODEL;
+                    } else {
+                        cat = Category.UNIT_MODEL; // default for uncategorised MDX
+                    }
+                } else if (isSound) {
+                    cat = Category.SOUND;
+                } else {
+                    cat = Category.TEXTURE;
+                }
 
                 long size = -1;
                 try {
@@ -266,10 +364,9 @@ public class MapMetadataService {
                         size = data != null ? data.length : -1;
                     }
                 } catch (Exception ignored) {
-                    // Size unavailable — leave at -1
                 }
 
-                entries.add(new MapAssetEntry(path, size, isMdx));
+                entries.add(new MapAssetEntry(path, size, cat));
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Could not load existing assets from " + mapFile.getName(), e);
