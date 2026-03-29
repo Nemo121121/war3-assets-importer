@@ -3,6 +3,7 @@ package com.hiveworkshop.war3assetsimporter.gui;
 import com.hiveworkshop.war3assetsimporter.AppInfo;
 import com.hiveworkshop.war3assetsimporter.core.model.*;
 import com.hiveworkshop.war3assetsimporter.core.service.AssetDiscoveryService;
+import com.hiveworkshop.war3assetsimporter.core.service.ExportService;
 import com.hiveworkshop.war3assetsimporter.core.service.ImportService;
 import com.hiveworkshop.war3assetsimporter.core.service.MapMetadataService;
 import com.hiveworkshop.war3assetsimporter.gui.i18n.Messages;
@@ -49,6 +50,7 @@ public class MainFrame {
     private final MapMetadataService metadataService = new MapMetadataService();
     private final AssetDiscoveryService discoveryService = new AssetDiscoveryService();
     private final ImportService importService = new ImportService();
+    private final ExportService exportService = new ExportService();
 
     // ---- Appearance ----
     private final AppearanceConfig appearanceConfig;
@@ -77,6 +79,7 @@ public class MainFrame {
     // Toolbar buttons (kept as fields so applyI18n() can update their labels)
     private JButton openMapButton;
     private JButton importModelsButton;
+    private JButton exportAssetsButton;
     private JButton processButton;
     private JButton settingsButton;
     private JButton helpButton;
@@ -173,6 +176,7 @@ public class MainFrame {
         // ---- Toolbar ----
         openMapButton = new JButton(Messages.get("button.openMap"));
         importModelsButton = new JButton(Messages.get("button.importModels"));
+        exportAssetsButton = new JButton(Messages.get("button.exportAssets"));
         processButton = new JButton(Messages.get("button.process"));
         settingsButton = new JButton(Messages.get("button.settings"));
         helpButton = new JButton(Messages.get("button.help"));
@@ -180,6 +184,7 @@ public class MainFrame {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         buttonPanel.add(openMapButton);
         buttonPanel.add(importModelsButton);
+        buttonPanel.add(exportAssetsButton);
         buttonPanel.add(processButton);
         buttonPanel.add(settingsButton);
         buttonPanel.add(helpButton);
@@ -244,6 +249,7 @@ public class MainFrame {
         // ---- Button wiring ----
         openMapButton.addActionListener(this::onOpenMap);
         importModelsButton.addActionListener(this::onImportModels);
+        exportAssetsButton.addActionListener(this::onExportAssets);
         processButton.addActionListener(this::onProcess);
         settingsButton.addActionListener(this::onOpenSettings);
         helpButton.addActionListener(e -> new HelpDialog(frame).setVisible(true));
@@ -528,6 +534,13 @@ public class MainFrame {
         if (!existingUnits.isEmpty()) {
             log("Found " + existingUnits.size() + " existing unit placement(s) on map.");
         }
+
+        // Load existing custom assets (MDX/textures) from the map's import table
+        List<MapAssetEntry> existingAssets = metadataService.loadExistingAssets(mapFile);
+        assetTreePanel.setExistingMapAssets(existingAssets);
+        if (!existingAssets.isEmpty()) {
+            log("Found " + existingAssets.size() + " existing custom asset(s) in map.");
+        }
     }
 
     private void importModelsFolder(File selectedModelsFolder) {
@@ -619,8 +632,11 @@ public class MainFrame {
                 importConfigPanel.isAutoAssignIconEnabled(),
                 importConfigPanel.isFlattenPathsEnabled(),
                 placingOrder,
-                importConfigPanel.getPlacementBounds(),  // null when no shape drawn → camera-bounds fallback
-                importConfigPanel.isCreateAlternateUnitsEnabled()
+                importConfigPanel.getPlacementBounds(),
+                importConfigPanel.isCreateAlternateUnitsEnabled(),
+                importConfigPanel.isCreateDoodadsSelected(),
+                importConfigPanel.isPlaceDoodadsSelected(),
+                importConfigPanel.getDoodadOriginId()
         );
 
         // Resolve the output file path
@@ -667,6 +683,53 @@ public class MainFrame {
         task.execute();
     }
 
+    private void onExportAssets(ActionEvent e) {
+        if (mapFile == null) {
+            log("Please open a map first.");
+            return;
+        }
+        Set<String> selectedPaths = assetTreePanel.getCheckedExistingAssetPaths();
+        if (selectedPaths.isEmpty()) {
+            log("No existing map assets selected for export. Check assets under '"
+                    + Messages.get("tree.existingAssets") + "' in the Assets tab.");
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser(lastModelsDir);
+        chooser.setDialogTitle(Messages.get("dialog.exportFolder"));
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+
+        File exportDir = chooser.getSelectedFile();
+        log("Exporting " + selectedPaths.size() + " asset(s) to: " + exportDir.getAbsolutePath());
+
+        statusBar.setIndeterminate(true);
+        statusBar.setString(Messages.get("status.exporting"));
+        exportAssetsButton.setEnabled(false);
+
+        SwingWorker<Void, String> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                exportService.exportAssets(mapFile, selectedPaths, exportDir, this::publish);
+                return null;
+            }
+
+            @Override
+            protected void process(java.util.List<String> chunks) {
+                for (String msg : chunks) log(msg);
+            }
+
+            @Override
+            protected void done() {
+                statusBar.setIndeterminate(false);
+                statusBar.setString(Messages.get("status.done"));
+                exportAssetsButton.setEnabled(true);
+                log("Export complete.");
+            }
+        };
+        worker.execute();
+    }
+
     private void onOpenSettings(ActionEvent e) {
         LOG.fine("Opening settings dialog");
         SettingsDialog dialog = new SettingsDialog(frame, appearanceConfig);
@@ -705,6 +768,7 @@ public class MainFrame {
         frame.setTitle(AppInfo.APP_NAME + " v" + AppInfo.VERSION);
         openMapButton.setText(Messages.get("button.openMap"));
         importModelsButton.setText(Messages.get("button.importModels"));
+        exportAssetsButton.setText(Messages.get("button.exportAssets"));
         processButton.setText(Messages.get("button.process"));
         settingsButton.setText(Messages.get("button.settings"));
         helpButton.setText(Messages.get("button.help"));

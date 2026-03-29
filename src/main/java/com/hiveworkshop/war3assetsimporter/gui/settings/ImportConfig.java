@@ -46,6 +46,11 @@ public class ImportConfig {
     private boolean autoAssignIcon = false;
     private String nameFormat = "Space Separated (keep case)";
 
+    // ---- Doodad Creation ----
+    private boolean createDoodads = false;
+    private boolean placeDoodads = false;
+    private String doodadOriginId = "YTlb";
+
     // -------------------------------------------------------------------------
     // Load / save
     // -------------------------------------------------------------------------
@@ -70,6 +75,9 @@ public class ImportConfig {
             if (obj.has("autoNameUnits"))        autoNameUnits        = obj.get("autoNameUnits").getAsBoolean();
             if (obj.has("autoAssignIcon"))       autoAssignIcon       = obj.get("autoAssignIcon").getAsBoolean();
             if (obj.has("nameFormat"))           nameFormat           = obj.get("nameFormat").getAsString();
+            if (obj.has("createDoodads"))       createDoodads        = obj.get("createDoodads").getAsBoolean();
+            if (obj.has("placeDoodads"))        placeDoodads         = obj.get("placeDoodads").getAsBoolean();
+            if (obj.has("doodadOriginId"))      doodadOriginId       = obj.get("doodadOriginId").getAsString();
         } catch (IOException e) {
             System.err.println("Warning: could not load import-config.json — using defaults.");
         }
@@ -94,6 +102,9 @@ public class ImportConfig {
             obj.addProperty("autoNameUnits",        autoNameUnits);
             obj.addProperty("autoAssignIcon",       autoAssignIcon);
             obj.addProperty("nameFormat",           nameFormat);
+            obj.addProperty("createDoodads",       createDoodads);
+            obj.addProperty("placeDoodads",        placeDoodads);
+            obj.addProperty("doodadOriginId",      doodadOriginId);
             try (FileWriter writer = new FileWriter(CONFIG_FILE.toFile())) {
                 GSON.toJson(obj, writer);
             }
@@ -150,4 +161,13 @@ public class ImportConfig {
 
     public String getNameFormat()           { return nameFormat; }
     public void setNameFormat(String v)     { nameFormat = v; }
+
+    public boolean isCreateDoodads()       { return createDoodads; }
+    public void setCreateDoodads(boolean v){ createDoodads = v; }
+
+    public boolean isPlaceDoodads()        { return placeDoodads; }
+    public void setPlaceDoodads(boolean v) { placeDoodads = v; }
+
+    public String getDoodadOriginId()      { return doodadOriginId; }
+    public void setDoodadOriginId(String v){ doodadOriginId = v; }
 }

@@ -48,6 +48,12 @@ public class ImportConfigPanel extends JPanel {
     private final JCheckBox createAlternateUnitsBox;
     private final JSpinner unitScalingSpinner;
 
+    // ---- Doodad creation form fields ----
+    private final JCheckBox createDoodadsBox;
+    private final JCheckBox placeDoodadsBox;
+    private final JTextField doodadOriginField;
+    private final JLabel doodadOriginIdLabel = new JLabel();
+
     // ---- General import options ----
     private final JCheckBox flattenPathsBox;
 
@@ -71,6 +77,7 @@ public class ImportConfigPanel extends JPanel {
     private final JTextField outputPathField;
     // ---- Section panels (stored for i18n border refresh) ----
     private JPanel creationSection;
+    private JPanel doodadSection;
     private JPanel placementSection;
     private JPanel namingSection;
     private JLabel outputLabel;
@@ -107,6 +114,11 @@ public class ImportConfigPanel extends JPanel {
         flattenPathsBox = new JCheckBox(Messages.get("checkbox.flattenPaths"));
         unitScalingSpinner = new JSpinner(new SpinnerNumberModel(1.0, 0.1, 10.0, 0.1));
 
+        // ---- Doodad creation fields ----
+        createDoodadsBox = new JCheckBox();
+        placeDoodadsBox = new JCheckBox();
+        doodadOriginField = new JTextField("YTlb", 6);
+
         // ---- Unit naming fields ----
         autoNameUnitsBox = new JCheckBox(Messages.get("checkbox.autoNameUnits"));
         autoAssignIconBox = new JCheckBox(Messages.get("checkbox.autoAssignIcon"));
@@ -134,6 +146,11 @@ public class ImportConfigPanel extends JPanel {
         autoNameUnitsBox.setToolTipText(Messages.get("tooltip.autoNameUnits"));
         autoAssignIconBox.setToolTipText(Messages.get("tooltip.autoAssignIcon"));
         nameFormatCombo.setToolTipText(Messages.get("tooltip.nameFormat"));
+
+        // ---- Doodad tooltips ----
+        createDoodadsBox.setToolTipText(Messages.get("tooltip.createDoodads"));
+        placeDoodadsBox.setToolTipText(Messages.get("tooltip.placeDoodads"));
+        doodadOriginField.setToolTipText(Messages.get("tooltip.doodadOriginId"));
 
         // ---- Output path field ----
         outputPathField = new JTextField();
@@ -223,6 +240,10 @@ public class ImportConfigPanel extends JPanel {
         main.add(buildCreationSection());
         main.add(Box.createVerticalStrut(10));
 
+        // ---- Doodad Creation Section ----
+        main.add(buildDoodadSection());
+        main.add(Box.createVerticalStrut(10));
+
         // ---- Unit Placement Section ----
         main.add(buildPlacementSection());
         main.add(Box.createVerticalStrut(10));
@@ -290,6 +311,42 @@ public class ImportConfigPanel extends JPanel {
         p.add(flattenPathsBox, cc);
 
         addRow(p, lc, fc, row++, unitScalingLabel, unitScalingSpinner);
+
+        return p;
+    }
+
+    private JPanel buildDoodadSection() {
+        doodadSection = new JPanel(new GridBagLayout());
+        JPanel p = doodadSection;
+        p.setBorder(BorderFactory.createTitledBorder(Messages.get("section.doodadCreation")));
+
+        GridBagConstraints cc = new GridBagConstraints();
+        cc.gridx = 0;
+        cc.gridwidth = 2;
+        cc.anchor = GridBagConstraints.WEST;
+        cc.insets = new Insets(3, 10, 3, 10);
+
+        int row = 0;
+        cc.gridy = row++;
+        createDoodadsBox.setText(Messages.get("checkbox.createDoodads"));
+        p.add(createDoodadsBox, cc);
+
+        cc.gridy = row++;
+        placeDoodadsBox.setText(Messages.get("checkbox.placeDoodads"));
+        p.add(placeDoodadsBox, cc);
+
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.gridx = 0;
+        lc.anchor = GridBagConstraints.WEST;
+        lc.insets = new Insets(5, 10, 3, 5);
+
+        GridBagConstraints fc = new GridBagConstraints();
+        fc.gridx = 1;
+        fc.fill = GridBagConstraints.HORIZONTAL;
+        fc.weightx = 1.0;
+        fc.insets = new Insets(5, 2, 3, 10);
+
+        addRow(p, lc, fc, row++, doodadOriginIdLabel, doodadOriginField);
 
         return p;
     }
@@ -643,6 +700,19 @@ public class ImportConfigPanel extends JPanel {
         return flattenPathsBox.isSelected();
     }
 
+    // ---- Doodad Creation Getters ----
+    public boolean isCreateDoodadsSelected() {
+        return createDoodadsBox.isSelected();
+    }
+
+    public boolean isPlaceDoodadsSelected() {
+        return placeDoodadsBox.isSelected();
+    }
+
+    public String getDoodadOriginId() {
+        return doodadOriginField.getText().trim();
+    }
+
     /**
      * Returns the world-space placement bounds for the import.
      *
@@ -722,6 +792,10 @@ public class ImportConfigPanel extends JPanel {
         autoNameUnitsBox.setSelected(cfg.isAutoNameUnits());
         autoAssignIconBox.setSelected(cfg.isAutoAssignIcon());
 
+        createDoodadsBox.setSelected(cfg.isCreateDoodads());
+        placeDoodadsBox.setSelected(cfg.isPlaceDoodads());
+        doodadOriginField.setText(cfg.getDoodadOriginId());
+
         // Restore placing order combo
         String savedOrder = cfg.getPlacingOrder();
         for (int i = 0; i < placingOrderCombo.getItemCount(); i++) {
@@ -765,6 +839,9 @@ public class ImportConfigPanel extends JPanel {
         cfg.setAutoAssignIcon(autoAssignIconBox.isSelected());
         NameFormatItem fmt = (NameFormatItem) nameFormatCombo.getSelectedItem();
         cfg.setNameFormat(fmt != null ? fmt.formatKey() : "Space Separated (keep case)");
+        cfg.setCreateDoodads(createDoodadsBox.isSelected());
+        cfg.setPlaceDoodads(placeDoodadsBox.isSelected());
+        cfg.setDoodadOriginId(doodadOriginField.getText().trim());
     }
 
     // -------------------------------------------------------------------------
@@ -784,8 +861,16 @@ public class ImportConfigPanel extends JPanel {
         flattenPathsBox.setText(Messages.get("checkbox.flattenPaths"));
         autoNameUnitsBox.setText(Messages.get("checkbox.autoNameUnits"));
         autoAssignIconBox.setText(Messages.get("checkbox.autoAssignIcon"));
+        // Doodad checkboxes and labels
+        createDoodadsBox.setText(Messages.get("checkbox.createDoodads"));
+        placeDoodadsBox.setText(Messages.get("checkbox.placeDoodads"));
+        doodadOriginIdLabel.setText(Messages.get("label.doodadOriginId"));
+        createDoodadsBox.setToolTipText(Messages.get("tooltip.createDoodads"));
+        placeDoodadsBox.setToolTipText(Messages.get("tooltip.placeDoodads"));
+        doodadOriginField.setToolTipText(Messages.get("tooltip.doodadOriginId"));
         // Section titled borders — setBorder() triggers revalidate+repaint on each panel
         creationSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.unitCreation")));
+        doodadSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.doodadCreation")));
         placementSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.unitPlacement")));
         namingSection.setBorder(BorderFactory.createTitledBorder(Messages.get("section.unitNaming")));
         // Combo boxes re-render their items via toString()

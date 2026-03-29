@@ -3,14 +3,17 @@ package com.hiveworkshop.war3assetsimporter.core.service;
 import com.hiveworkshop.war3assetsimporter.core.model.ImportOptions;
 import com.hiveworkshop.war3assetsimporter.core.model.ImportResult;
 import com.hiveworkshop.war3assetsimporter.core.util.CameraBounds;
+import com.hiveworkshop.war3assetsimporter.core.util.DoodadIDGenerator;
 import com.hiveworkshop.war3assetsimporter.core.util.UnitIDGenerator;
 import com.hiveworkshop.war3assetsimporter.core.util.UnitPlacementGrid;
 import com.hiveworkshop.war3assetsimporter.gui.NameFormatter;
 import net.moonlightflower.wc3libs.bin.ObjMod;
 import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
 import net.moonlightflower.wc3libs.bin.Wc3BinOutputStream;
+import net.moonlightflower.wc3libs.bin.app.DOO;
 import net.moonlightflower.wc3libs.bin.app.DOO_UNITS;
 import net.moonlightflower.wc3libs.bin.app.IMP;
+import net.moonlightflower.wc3libs.bin.app.objMod.W3D;
 import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords2DF;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords3DF;
@@ -323,7 +326,6 @@ public class ImportService {
         Set<String> existingModelPaths = w3u.getObjsList().stream()
                 .map(obj -> {
                     try {
-                        // Check if the field exists to avoid exceptions for non-unit objects
                         Object val = obj.get(MetaFieldId.valueOf("umdl"));
                         return val != null ? val.toString() : null;
                     } catch (Exception ignored) {
@@ -334,6 +336,48 @@ public class ImportService {
                 .collect(Collectors.toCollection(HashSet::new));
 
         String baseUnitId = options.getUnitOriginId() != null ? options.getUnitOriginId() : "hfoo";
+
+        // ---- Load or create W3D (custom doodad definitions) ----
+        W3D w3d = mpq.hasFile("war3map.w3d")
+                ? new W3D(new Wc3BinInputStream(new ByteArrayInputStream(mpq.extractFileAsBytes("war3map.w3d"))))
+                : new W3D();
+
+        Set<String> existingDoodadIds = w3d.getObjsList().stream()
+                .map(W3D.Dood::getId)
+                .map(ObjId::toString)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        Set<String> existingDoodadModelPaths = w3d.getObjsList().stream()
+                .map(obj -> {
+                    try {
+                        Object val = obj.get(MetaFieldId.valueOf("dfil"));
+                        return val != null ? val.toString() : null;
+                    } catch (Exception ignored) {
+                        return null;
+                    }
+                })
+                .filter(s -> s != null)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        String baseDoodadId = options.getDoodadOriginId() != null ? options.getDoodadOriginId() : "YTlb";
+
+        // ---- Load or create DOO (doodad placements) ----
+        DOO doo;
+        boolean dooParseFailed = false;
+        if (mpq.hasFile(DOO.GAME_PATH.getName())) {
+            try {
+                doo = new DOO(new Wc3BinInputStream(
+                        new ByteArrayInputStream(mpq.extractFileAsBytes(DOO.GAME_PATH.getName()))));
+                log.accept("Loaded existing doodads from map (" + doo.getDoods().size() + " doodads).");
+            } catch (Exception dooEx) {
+                LOG.log(Level.WARNING, "Could not parse war3map.doo — existing doodads will be preserved unchanged.", dooEx);
+                log.accept("Warning: could not read existing doodads. Existing doodads will NOT be overwritten.");
+                doo = new DOO();
+                dooParseFailed = true;
+            }
+        } else {
+            doo = new DOO();
+        }
 
         Path baseFolderPath = rootFolder.toPath().toAbsolutePath().normalize();
         HashMap<String, File> insertedTextures = new HashMap<>();
@@ -514,6 +558,44 @@ public class ImportService {
                     }
                 }
             }
+
+            // ---- Doodad definition for this MDX file ----
+            if (f.getName().toLowerCase().endsWith(".mdx") && !isPortrait && options.getCreateDoodads()) {
+                String modelPath = options.getFlattenPaths() ? f.getName() : filePath.toString();
+                if (existingDoodadModelPaths.contains(modelPath)) {
+                    log.accept("Doodad already defined for model: " + modelPath + ", skipping.");
+                } else {
+                    String doodadIdString = DoodadIDGenerator.generateNextId(existingDoodadIds);
+                    existingDoodadIds.add(doodadIdString);
+                    ObjId newDoodadId = ObjId.valueOf(doodadIdString);
+                    log.accept("Adding doodad with ID: " + newDoodadId);
+
+                    ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(baseDoodadId));
+                    doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+
+                    existingDoodadModelPaths.add(modelPath);
+
+                    if (options.getPlaceDoodads() && placer != null) {
+                        Coords2DF coords = placer.nextPosition();
+                        if (coords != null) {
+                            float cx = coords.getX().getVal();
+                            float cy = coords.getY().getVal();
+                            if (!dooParseFailed) {
+                                DOO.Dood doodObj = doo.addDood();
+                                doodObj.setTypeId(newDoodadId);
+                                doodObj.setSkinId(newDoodadId);
+                                doodObj.setPos(new Coords3DF(cx, cy, 0));
+                                doodObj.setAngle((float) Math.toRadians(options.getUnitAngle()));
+                                doodObj.setScale(new Coords3DF(1F, 1F, 1F));
+                                doodObj.setVariation(0);
+                                doodObj.setFlags(0);
+                                doodObj.setLifePerc(100);
+                            }
+                            log.accept("Placed doodad at: " + cx + ", " + cy);
+                        }
+                    }
+                }
+            }
         }
 
         // Update war3map.j with BlzCreateUnitWithSkin calls when units are placed,
@@ -531,13 +613,26 @@ public class ImportService {
         mpq.insertByteArray(IMP.GAME_PATH, serializeImp(importFile));
 
         // Only rewrite DOO_UNITS if we successfully read (or intentionally cleared) it.
-        // If parsing failed, leave the existing binary untouched so the map's terrain units are preserved.
         if (!dooUnitsParseFailed) {
             mpq.deleteFile(DOO_UNITS.GAME_PATH.getName());
             mpq.insertByteArray(DOO_UNITS.GAME_PATH.getName(), serializeDooUnits(dooUnits));
         } else {
             LOG.fine("Skipping war3mapUnits.doo rewrite — preserving original binary in MPQ.");
             log.accept("Skipped war3mapUnits.doo rewrite — original terrain units preserved in output map.");
+        }
+
+        // Write W3D (custom doodad definitions) if doodad creation was requested
+        if (options.getCreateDoodads()) {
+            mpq.deleteFile("war3map.w3d");
+            mpq.insertByteArray("war3map.w3d", serializeW3d(w3d));
+            log.accept("Wrote " + w3d.getObjsList().size() + " doodad definition(s) to war3map.w3d.");
+        }
+
+        // Write DOO (doodad placements) if doodads were placed
+        if (options.getCreateDoodads() && options.getPlaceDoodads() && !dooParseFailed) {
+            mpq.deleteFile(DOO.GAME_PATH.getName());
+            mpq.insertByteArray(DOO.GAME_PATH.getName(), serializeDoo(doo));
+            log.accept("Wrote " + doo.getDoods().size() + " doodad placement(s) to war3map.doo.");
         }
     }
 
@@ -556,6 +651,24 @@ public class ImportService {
 
     private byte[] serializeImp(IMP obj) throws Exception {
         LOG.fine("Serializing IMP (" + obj.getObjs().size() + " import entry/entries)");
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (Wc3BinOutputStream out = new Wc3BinOutputStream(baos)) {
+            obj.write(out);
+        }
+        return baos.toByteArray();
+    }
+
+    private byte[] serializeW3d(W3D obj) throws Exception {
+        LOG.fine("Serializing W3D (" + obj.getObjsList().size() + " custom doodad(s))");
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (Wc3BinOutputStream out = new Wc3BinOutputStream(baos)) {
+            obj.write(out);
+        }
+        return baos.toByteArray();
+    }
+
+    private byte[] serializeDoo(DOO obj) throws Exception {
+        LOG.fine("Serializing DOO (" + obj.getDoods().size() + " placed doodad(s))");
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (Wc3BinOutputStream out = new Wc3BinOutputStream(baos)) {
             obj.write(out);

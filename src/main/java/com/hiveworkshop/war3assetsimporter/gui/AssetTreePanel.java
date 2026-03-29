@@ -1,5 +1,6 @@
 package com.hiveworkshop.war3assetsimporter.gui;
 
+import com.hiveworkshop.war3assetsimporter.core.model.MapAssetEntry;
 import com.hiveworkshop.war3assetsimporter.gui.i18n.Messages;
 
 import javax.swing.*;
@@ -52,6 +53,9 @@ public class AssetTreePanel extends JPanel {
     private final JRadioButton categoryBtn;
     private final JRadioButton folderBtn;
     private boolean isFolderTreeActive = false;
+    // ---- Existing map assets state ----
+    private List<MapAssetEntry> existingMapAssets = java.util.Collections.emptyList();
+
     // ---- Shared state ----
     private boolean controlDown = false;
     private boolean isTreeUpdating = false;
@@ -211,6 +215,122 @@ public class AssetTreePanel extends JPanel {
 
     public void setModelsFolder(File folder) {
         this.modelsFolder = folder;
+    }
+
+    /**
+     * Populates the category tree with existing custom assets found inside the opened map.
+     * Called by MainFrame when a map is opened, before any models folder is selected.
+     * These assets appear under an "Existing Map Assets" node and can be selected for export.
+     */
+    public void setExistingMapAssets(List<MapAssetEntry> assets) {
+        this.existingMapAssets = assets != null ? assets : java.util.Collections.emptyList();
+        rebuildCategoryTreeWithExistingAssets();
+    }
+
+    /**
+     * Returns the in-MPQ paths of all checked existing map assets (for export).
+     */
+    public Set<String> getCheckedExistingAssetPaths() {
+        Set<String> result = new LinkedHashSet<>();
+        JCheckBoxTreeNode root = (JCheckBoxTreeNode) treeModel.getRoot();
+        for (int i = 0; i < root.getChildCount(); i++) {
+            JCheckBoxTreeNode child = (JCheckBoxTreeNode) root.getChildAt(i);
+            Object data = child.getUserObject();
+            if (data instanceof TreeNodeData td && td.relativePath().startsWith("__existing__/")) {
+                collectExistingAssetPaths(child, result);
+            }
+        }
+        return result;
+    }
+
+    private void collectExistingAssetPaths(JCheckBoxTreeNode node, Set<String> result) {
+        if (node.isLeaf() && node.isChecked()) {
+            TreeNodeData data = (TreeNodeData) node.getUserObject();
+            if (data.isFile()) {
+                // The mpqPath is stored in the relativePath field after the "__existing__/" prefix
+                String rel = data.relativePath();
+                String prefix = "__existing__/";
+                if (rel.startsWith(prefix)) {
+                    result.add(rel.substring(prefix.length()));
+                }
+            }
+            return;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            Object child = node.getChildAt(i);
+            if (child instanceof JCheckBoxTreeNode cb) collectExistingAssetPaths(cb, result);
+        }
+    }
+
+    /**
+     * Returns true if any existing map assets are currently checked.
+     */
+    public boolean hasCheckedExistingAssets() {
+        return !getCheckedExistingAssetPaths().isEmpty();
+    }
+
+    private void rebuildCategoryTreeWithExistingAssets() {
+        JCheckBoxTreeNode root = (JCheckBoxTreeNode) treeModel.getRoot();
+
+        // Remove any previous existing-assets node
+        for (int i = root.getChildCount() - 1; i >= 0; i--) {
+            JCheckBoxTreeNode child = (JCheckBoxTreeNode) root.getChildAt(i);
+            Object data = child.getUserObject();
+            if (data instanceof TreeNodeData td && td.relativePath().startsWith("__existing__")) {
+                root.remove(i);
+            }
+        }
+
+        if (existingMapAssets.isEmpty()) {
+            treeModel.reload();
+            return;
+        }
+
+        // Build existing assets node
+        List<MapAssetEntry> mdxAssets = existingMapAssets.stream().filter(MapAssetEntry::isMdx).toList();
+        List<MapAssetEntry> texAssets = existingMapAssets.stream().filter(a -> !a.isMdx()).toList();
+
+        long totalSize = existingMapAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
+
+        TreeNodeData existingRootData = new TreeNodeData(
+                Messages.get("tree.existingAssets"), false, "__existing__",
+                totalSize, existingMapAssets.size());
+        JCheckBoxTreeNode existingRoot = new JCheckBoxTreeNode(existingRootData, false);
+
+        if (!mdxAssets.isEmpty()) {
+            long mdxSize = mdxAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
+            TreeNodeData mdxCatData = new TreeNodeData(
+                    Messages.get("tree.mdx"), false, "__existing__/mdx",
+                    mdxSize, mdxAssets.size());
+            JCheckBoxTreeNode mdxCat = new JCheckBoxTreeNode(mdxCatData, false);
+            for (MapAssetEntry asset : mdxAssets) {
+                TreeNodeData leafData = new TreeNodeData(
+                        asset.filename(), true, "__existing__/" + asset.path(),
+                        Math.max(0, asset.size()), 1);
+                mdxCat.add(new JCheckBoxTreeNode(leafData, false));
+            }
+            existingRoot.add(mdxCat);
+        }
+
+        if (!texAssets.isEmpty()) {
+            long texSize = texAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
+            TreeNodeData texCatData = new TreeNodeData(
+                    Messages.get("tree.textures"), false, "__existing__/tex",
+                    texSize, texAssets.size());
+            JCheckBoxTreeNode texCat = new JCheckBoxTreeNode(texCatData, false);
+            for (MapAssetEntry asset : texAssets) {
+                TreeNodeData leafData = new TreeNodeData(
+                        asset.filename(), true, "__existing__/" + asset.path(),
+                        Math.max(0, asset.size()), 1);
+                texCat.add(new JCheckBoxTreeNode(leafData, false));
+            }
+            existingRoot.add(texCat);
+        }
+
+        // Insert existing assets node as the first child
+        root.insert(existingRoot, 0);
+        treeModel.reload();
+        assetTree.resetCheckingState();
     }
 
     public JTree getTree() {
