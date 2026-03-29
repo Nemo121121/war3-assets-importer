@@ -2,11 +2,11 @@ package com.hiveworkshop.war3assetsimporter.core.service;
 
 import com.hiveworkshop.war3assetsimporter.core.model.MapAssetEntry;
 import com.hiveworkshop.war3assetsimporter.core.model.MapAssetEntry.Category;
+import net.moonlightflower.wc3libs.bin.ObjMod;
 import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
 import net.moonlightflower.wc3libs.bin.app.objMod.W3D;
 import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
 import net.moonlightflower.wc3libs.misc.MetaFieldId;
-import net.moonlightflower.wc3libs.misc.ObjId;
 import systems.crigges.jmpq3.JMpqEditor;
 import systems.crigges.jmpq3.MPQOpenOption;
 
@@ -23,27 +23,16 @@ import java.util.logging.Logger;
 
 /**
  * Extracts custom assets from a Warcraft 3 map's MPQ archive into categorised
- * subfolders (units/, buildings/, doodads/, textures/, sounds/) and writes
- * object definition metadata alongside the exported models.
+ * subfolders and writes complete object-editor definition data alongside the
+ * exported models so they can be fully recreated on import.
  */
 public class ExportService {
 
     private static final Logger LOG = Logger.getLogger(ExportService.class.getName());
 
-    /** W3U fields to export for unit/building metadata. */
-    private static final String[] UNIT_FIELDS = {"unam", "umdl", "usca", "uico", "uani", "ubdg"};
-    /** W3D fields to export for doodad metadata. */
-    private static final String[] DOODAD_FIELDS = {"dfil", "dnam"};
-
     /**
      * Exports the specified assets from a map file into categorised subfolders
-     * under {@code outputFolder}, and writes definition metadata JSON files.
-     *
-     * @param mapFile       the source .w3x/.w3m map file
-     * @param assetEntries  list of assets to export (with category information)
-     * @param outputFolder  destination root directory (created if absent)
-     * @param log           receives log messages; may be {@code null}
-     * @return list of successfully exported file paths
+     * under {@code outputFolder}, and writes complete definition JSON files.
      */
     public List<Path> exportAssets(File mapFile, List<MapAssetEntry> assetEntries,
                                    File outputFolder, Consumer<String> log) {
@@ -69,7 +58,6 @@ public class ExportService {
                     }
                     byte[] data = mpq.extractFileAsBytes(mpqPath);
 
-                    // Determine subfolder from category
                     String subFolder = entry.category().folderName();
                     Path subDir = outputFolder.toPath().resolve(subFolder);
                     Files.createDirectories(subDir);
@@ -86,10 +74,10 @@ public class ExportService {
                 }
             }
 
-            // ---- Write object definition metadata ----
-            writeUnitMetadata(mpq, assetEntries, outputFolder, Category.UNIT_MODEL, log);
-            writeUnitMetadata(mpq, assetEntries, outputFolder, Category.BUILDING_MODEL, log);
-            writeDoodadMetadata(mpq, assetEntries, outputFolder, log);
+            // ---- Write complete object definition data ----
+            writeUnitDefinitions(mpq, assetEntries, outputFolder, Category.UNIT_MODEL, log);
+            writeUnitDefinitions(mpq, assetEntries, outputFolder, Category.BUILDING_MODEL, log);
+            writeDoodadDefinitions(mpq, assetEntries, outputFolder, log);
 
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Failed to open map for export", ex);
@@ -100,14 +88,14 @@ public class ExportService {
     }
 
     /**
-     * Writes a JSON metadata file for unit or building definitions whose model
-     * path matches one of the exported assets in the given category.
+     * Writes ALL object-editor fields for unit/building definitions to definitions.json.
+     * Every modification (mod) on each W3U object is serialised with its field ID,
+     * value type, and value so it can be fully recreated on import.
      */
-    private void writeUnitMetadata(JMpqEditor mpq, List<MapAssetEntry> entries,
-                                   File outputFolder, Category category, Consumer<String> log) {
+    private void writeUnitDefinitions(JMpqEditor mpq, List<MapAssetEntry> entries,
+                                      File outputFolder, Category category, Consumer<String> log) {
         if (!mpq.hasFile("war3map.w3u")) return;
 
-        // Collect model paths for this category
         Set<String> modelPaths = new HashSet<>();
         for (MapAssetEntry e : entries) {
             if (e.category() == category) modelPaths.add(e.path());
@@ -129,44 +117,29 @@ public class ExportService {
 
                 if (!first) sb.append(",\n");
                 first = false;
-                sb.append("  {\n");
-                sb.append("    \"id\": \"").append(escapeJson(obj.getId().toString())).append("\",\n");
-                sb.append("    \"baseId\": \"").append(escapeJson(
-                        obj.getBaseId() != null ? obj.getBaseId().toString() : "")).append("\",\n");
-                for (String field : UNIT_FIELDS) {
-                    Object val = obj.get(MetaFieldId.valueOf(field));
-                    if (val != null) {
-                        sb.append("    \"").append(field).append("\": \"")
-                                .append(escapeJson(val.toString())).append("\",\n");
-                    }
-                }
-                // Remove trailing comma
-                if (sb.charAt(sb.length() - 2) == ',') {
-                    sb.deleteCharAt(sb.length() - 2);
-                }
-                sb.append("  }");
+                writeObjJson(sb, obj);
             }
             sb.append("\n]\n");
 
-            if (!first) { // At least one entry was written
+            if (!first) {
                 Path subDir = outputFolder.toPath().resolve(category.folderName());
                 Files.createDirectories(subDir);
                 Path metaFile = subDir.resolve("definitions.json");
                 Files.writeString(metaFile, sb.toString(), StandardCharsets.UTF_8);
-                log.accept("Wrote " + category.folderName() + " definitions to: " + metaFile.getFileName());
+                log.accept("Wrote " + category.folderName() + " definitions ("
+                        + countEntries(sb) + " objects) to: definitions.json");
             }
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Could not write " + category.folderName() + " metadata", e);
-            log.accept("Warning: could not write " + category.folderName() + " metadata: " + e.getMessage());
+            LOG.log(Level.WARNING, "Could not write " + category.folderName() + " definitions", e);
+            log.accept("Warning: could not write " + category.folderName() + " definitions: " + e.getMessage());
         }
     }
 
     /**
-     * Writes a JSON metadata file for doodad definitions whose model path
-     * matches one of the exported doodad assets.
+     * Writes ALL object-editor fields for doodad definitions to definitions.json.
      */
-    private void writeDoodadMetadata(JMpqEditor mpq, List<MapAssetEntry> entries,
-                                     File outputFolder, Consumer<String> log) {
+    private void writeDoodadDefinitions(JMpqEditor mpq, List<MapAssetEntry> entries,
+                                        File outputFolder, Consumer<String> log) {
         if (!mpq.hasFile("war3map.w3d")) return;
 
         Set<String> modelPaths = new HashSet<>();
@@ -190,21 +163,7 @@ public class ExportService {
 
                 if (!first) sb.append(",\n");
                 first = false;
-                sb.append("  {\n");
-                sb.append("    \"id\": \"").append(escapeJson(obj.getId().toString())).append("\",\n");
-                sb.append("    \"baseId\": \"").append(escapeJson(
-                        obj.getBaseId() != null ? obj.getBaseId().toString() : "")).append("\",\n");
-                for (String field : DOODAD_FIELDS) {
-                    Object val = obj.get(MetaFieldId.valueOf(field));
-                    if (val != null) {
-                        sb.append("    \"").append(field).append("\": \"")
-                                .append(escapeJson(val.toString())).append("\",\n");
-                    }
-                }
-                if (sb.charAt(sb.length() - 2) == ',') {
-                    sb.deleteCharAt(sb.length() - 2);
-                }
-                sb.append("  }");
+                writeObjJson(sb, obj);
             }
             sb.append("\n]\n");
 
@@ -213,15 +172,52 @@ public class ExportService {
                 Files.createDirectories(subDir);
                 Path metaFile = subDir.resolve("definitions.json");
                 Files.writeString(metaFile, sb.toString(), StandardCharsets.UTF_8);
-                log.accept("Wrote doodad definitions to: " + metaFile.getFileName());
+                log.accept("Wrote doodad definitions to: definitions.json");
             }
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Could not write doodad metadata", e);
-            log.accept("Warning: could not write doodad metadata: " + e.getMessage());
+            LOG.log(Level.WARNING, "Could not write doodad definitions", e);
+            log.accept("Warning: could not write doodad definitions: " + e.getMessage());
         }
     }
 
-    /** Finds a unique filename in {@code dir}, appending _1, _2 etc. if needed. */
+    /**
+     * Writes a single ObjMod.Obj (unit, building, or doodad) as a JSON object,
+     * including ALL modification fields with their type information.
+     */
+    private void writeObjJson(StringBuilder sb, ObjMod.Obj obj) {
+        sb.append("  {\n");
+        sb.append("    \"id\": \"").append(escapeJson(obj.getId().toString())).append("\",\n");
+        sb.append("    \"baseId\": \"").append(escapeJson(
+                obj.getBaseId() != null ? obj.getBaseId().toString() : "")).append("\",\n");
+
+        // Write every field modification with its type
+        sb.append("    \"fields\": {\n");
+        List<ObjMod.Obj.Mod> mods = obj.getMods();
+        for (int i = 0; i < mods.size(); i++) {
+            ObjMod.Obj.Mod mod = mods.get(i);
+            String fieldId = mod.getId().toString();
+            String valType = mod.getValType().name(); // INT, REAL, UNREAL, STRING
+            String value = mod.getVal() != null ? mod.getVal().toString() : "";
+
+            sb.append("      \"").append(escapeJson(fieldId)).append("\": { ");
+            sb.append("\"type\": \"").append(valType).append("\", ");
+            sb.append("\"value\": \"").append(escapeJson(value)).append("\" }");
+            if (i < mods.size() - 1) sb.append(",");
+            sb.append("\n");
+        }
+        sb.append("    }\n");
+        sb.append("  }");
+    }
+
+    private int countEntries(StringBuilder sb) {
+        int count = 0;
+        for (int i = 0; i < sb.length(); i++) {
+            if (sb.charAt(i) == '{' && i > 0 && sb.charAt(i - 1) != '{') count++;
+        }
+        // Rough count: top-level objects = count of "  {" patterns
+        return Math.max(1, count / 2);
+    }
+
     private static Path resolveUniquePath(Path dir, String filename) {
         Path dest = dir.resolve(filename);
         int counter = 1;

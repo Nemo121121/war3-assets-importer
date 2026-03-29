@@ -383,6 +383,10 @@ public class ImportService {
             doo = new DOO();
         }
 
+        // ---- Load saved definitions from a previous export (definitions.json) ----
+        Map<String, DefinitionDataLoader.SavedDefinition> savedDefs =
+                DefinitionDataLoader.loadAll(rootFolder, log);
+
         Path baseFolderPath = rootFolder.toPath().toAbsolutePath().normalize();
         HashMap<String, File> insertedTextures = new HashMap<>();
 
@@ -481,18 +485,38 @@ public class ImportService {
                     String iconFilename = iconByModelName.get(modelBaseName);
 
                     // ---- Base unit definition ----
+                    // Check for saved definition data from a previous export
+                    DefinitionDataLoader.SavedDefinition savedUnitDef = findSavedDef(savedDefs, modelPath, f.getName());
+
+                    String effectiveBaseId = (savedUnitDef != null && !savedUnitDef.baseId().isEmpty())
+                            ? savedUnitDef.baseId() : baseUnitId;
+
                     String idString = UnitIDGenerator.generateNextId(existingIds);
                     existingIds.add(idString);
                     ObjId newId = ObjId.valueOf(idString);
                     log.accept("Adding unit with ID: " + newId);
 
-                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(baseUnitId));
-                    unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
-                    unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
-                    unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
-                    if (iconFilename != null) {
-                        unitObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
-                        log.accept("Assigned icon: " + iconFilename);
+                    ObjMod.Obj unitObj = w3u.addObj(newId, ObjId.valueOf(effectiveBaseId));
+
+                    if (savedUnitDef != null) {
+                        // Apply ALL saved fields from the exported definition
+                        DefinitionDataLoader.applyFields(unitObj, savedUnitDef, "umdl", log);
+                        // Override model path to point to the new import path
+                        unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                        // Override name if auto-naming is enabled
+                        if (options.getAutoNameUnits()) {
+                            unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                        }
+                        log.accept("Restored saved definition (base: " + effectiveBaseId + ")");
+                    } else {
+                        // No saved data — use basic fields as before
+                        unitObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                        unitObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                        unitObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                        if (iconFilename != null) {
+                            unitObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                            log.accept("Assigned icon: " + iconFilename);
+                        }
                     }
 
                     existingModelPaths.add(modelPath);
@@ -577,8 +601,18 @@ public class ImportService {
                         ObjId newDoodadId = ObjId.valueOf(doodadIdString);
                         log.accept("Adding doodad with ID: " + newDoodadId);
 
-                        ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(baseDoodadId));
-                        doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                        DefinitionDataLoader.SavedDefinition savedDoodDef = findSavedDef(savedDefs, modelPath, f.getName());
+                        String effectiveDoodBase = (savedDoodDef != null && !savedDoodDef.baseId().isEmpty())
+                                ? savedDoodDef.baseId() : baseDoodadId;
+
+                        ObjMod.Obj doodadObj = w3d.addObj(newDoodadId, ObjId.valueOf(effectiveDoodBase));
+                        if (savedDoodDef != null) {
+                            DefinitionDataLoader.applyFields(doodadObj, savedDoodDef, "dfil", log);
+                            doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                            log.accept("Restored saved doodad definition (base: " + effectiveDoodBase + ")");
+                        } else {
+                            doodadObj.set(MetaFieldId.valueOf("dfil"), new War3String(modelPath));
+                        }
 
                         existingDoodadModelPaths.add(modelPath);
 
@@ -631,12 +665,25 @@ public class ImportService {
                         ObjId newId = ObjId.valueOf(idString);
                         log.accept("Adding building with ID: " + newId);
 
-                        ObjMod.Obj buildingObj = w3u.addObj(newId, ObjId.valueOf(baseBuildingId));
-                        buildingObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
-                        buildingObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
-                        buildingObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
-                        if (iconFilename != null) {
-                            buildingObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                        DefinitionDataLoader.SavedDefinition savedBldgDef = findSavedDef(savedDefs, modelPath, f.getName());
+                        String effectiveBldgBase = (savedBldgDef != null && !savedBldgDef.baseId().isEmpty())
+                                ? savedBldgDef.baseId() : baseBuildingId;
+
+                        ObjMod.Obj buildingObj = w3u.addObj(newId, ObjId.valueOf(effectiveBldgBase));
+                        if (savedBldgDef != null) {
+                            DefinitionDataLoader.applyFields(buildingObj, savedBldgDef, "umdl", log);
+                            buildingObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                            if (options.getAutoNameUnits()) {
+                                buildingObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                            }
+                            log.accept("Restored saved building definition (base: " + effectiveBldgBase + ")");
+                        } else {
+                            buildingObj.set(MetaFieldId.valueOf("usca"), new War3Real((float) options.getUnitScaling()));
+                            buildingObj.set(MetaFieldId.valueOf("umdl"), new War3String(modelPath));
+                            buildingObj.set(MetaFieldId.valueOf("unam"), new War3String(unitName));
+                            if (iconFilename != null) {
+                                buildingObj.set(MetaFieldId.valueOf("uico"), new War3String(iconFilename));
+                            }
                         }
 
                         existingModelPaths.add(modelPath);
@@ -752,6 +799,28 @@ public class ImportService {
             obj.write(out);
         }
         return baos.toByteArray();
+    }
+
+    /**
+     * Looks up a saved definition by model path. Tries the full path first,
+     * then falls back to filename-only match (for when flatten paths changes).
+     */
+    private static DefinitionDataLoader.SavedDefinition findSavedDef(
+            Map<String, DefinitionDataLoader.SavedDefinition> savedDefs,
+            String modelPath, String filename) {
+        if (savedDefs.isEmpty()) return null;
+        // Exact match
+        DefinitionDataLoader.SavedDefinition def = savedDefs.get(modelPath);
+        if (def != null) return def;
+        // Try filename-only match (handles flatten-paths mismatch)
+        String nameOnly = filename.replace(".mdx", "").replace(".MDX", "");
+        for (var entry : savedDefs.entrySet()) {
+            String key = entry.getKey();
+            if (key.endsWith(filename) || key.endsWith(filename.replace('/', '\\'))) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private record UnitPlacement(String id, float x, float y, float angle) {
