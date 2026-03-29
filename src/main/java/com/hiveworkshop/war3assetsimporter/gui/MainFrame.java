@@ -685,13 +685,18 @@ public class MainFrame {
 
     private void onExportAssets(ActionEvent e) {
         if (mapFile == null) {
-            log("Please open a map first.");
+            JOptionPane.showMessageDialog(frame,
+                    "Please open a map first.",
+                    "Export Assets", JOptionPane.WARNING_MESSAGE);
             return;
         }
         Set<String> selectedPaths = assetTreePanel.getCheckedExistingAssetPaths();
         if (selectedPaths.isEmpty()) {
-            log("No existing map assets selected for export. Check assets under '"
-                    + Messages.get("tree.existingAssets") + "' in the Assets tab.");
+            JOptionPane.showMessageDialog(frame,
+                    "No existing map assets selected for export.\n"
+                    + "Check assets under '" + Messages.get("tree.existingAssets")
+                    + "' in the Assets tab first.",
+                    "Export Assets", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
