@@ -28,9 +28,23 @@ public final class ImportOptions {
      * Optional drawn-shape bounds in world space; {@code null} = fall back to camera bounds.
      */
     private final PlacementBounds placementBounds;
+    /**
+     * When true, custom doodad definitions (W3D) are created for each imported MDX file.
+     */
+    private final boolean createDoodads;
+    /**
+     * When true, created doodads are placed on the terrain (war3map.doo).
+     */
+    private final boolean placeDoodads;
+    /**
+     * Base doodad type ID to use as the template (e.g. "YTlb" for a tree doodad).
+     */
+    private final String doodadOriginId;
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, String unitOriginId) {
-        this(createUnits, placeUnits, clearUnits, clearAssets, 1.0, 270, 64.0, 64.0, unitOriginId, false, "Space Separated", false, false, PlacingOrder.ROWS, null, true);
+        this(createUnits, placeUnits, clearUnits, clearAssets, 1.0, 270, 64.0, 64.0, unitOriginId,
+                false, "Space Separated", false, false, PlacingOrder.ROWS, null, true,
+                false, false, "YTlb");
     }
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, double unitScaling,
@@ -41,7 +55,8 @@ public final class ImportOptions {
                          PlacingOrder placingOrder,
                          PlacementBounds placementBounds) {
         this(createUnits, placeUnits, clearUnits, clearAssets, unitScaling, unitAngle, unitSpacingX, unitSpacingY,
-                unitOriginId, autoNameUnits, nameFormat, autoAssignIcon, flattenPaths, placingOrder, placementBounds, true);
+                unitOriginId, autoNameUnits, nameFormat, autoAssignIcon, flattenPaths, placingOrder, placementBounds,
+                true, false, false, "YTlb");
     }
     public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
                          boolean clearAssets, double unitScaling,
@@ -52,6 +67,21 @@ public final class ImportOptions {
                          PlacingOrder placingOrder,
                          PlacementBounds placementBounds,
                          boolean createAlternateUnits) {
+        this(createUnits, placeUnits, clearUnits, clearAssets, unitScaling, unitAngle, unitSpacingX, unitSpacingY,
+                unitOriginId, autoNameUnits, nameFormat, autoAssignIcon, flattenPaths, placingOrder, placementBounds,
+                createAlternateUnits, false, false, "YTlb");
+    }
+    public ImportOptions(boolean createUnits, boolean placeUnits, boolean clearUnits,
+                         boolean clearAssets, double unitScaling,
+                         float unitAngle, double unitSpacingX, double unitSpacingY,
+                         String unitOriginId,
+                         boolean autoNameUnits, String nameFormat,
+                         boolean autoAssignIcon, boolean flattenPaths,
+                         PlacingOrder placingOrder,
+                         PlacementBounds placementBounds,
+                         boolean createAlternateUnits,
+                         boolean createDoodads, boolean placeDoodads,
+                         String doodadOriginId) {
         this.createUnits = createUnits;
         this.placeUnits = placeUnits;
         this.clearUnits = clearUnits;
@@ -68,10 +98,25 @@ public final class ImportOptions {
         this.placingOrder = placingOrder;
         this.placementBounds = placementBounds;
         this.createAlternateUnits = createAlternateUnits;
+        this.createDoodads = createDoodads;
+        this.placeDoodads = placeDoodads;
+        this.doodadOriginId = doodadOriginId;
     }
 
     public static ImportOptions defaults() {
         return new ImportOptions(true, true, false, false, "hfoo");
+    }
+
+    public boolean getCreateDoodads() {
+        return createDoodads;
+    }
+
+    public boolean getPlaceDoodads() {
+        return placeDoodads;
+    }
+
+    public String getDoodadOriginId() {
+        return doodadOriginId;
     }
 
     public float getUnitAngle() {

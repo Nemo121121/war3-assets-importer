@@ -1,12 +1,14 @@
 package com.hiveworkshop.war3assetsimporter.core.service;
 
 import com.hiveworkshop.war3assetsimporter.core.model.ExistingUnit;
+import com.hiveworkshop.war3assetsimporter.core.model.MapAssetEntry;
 import com.hiveworkshop.war3assetsimporter.core.model.MapMetadata;
 import com.hiveworkshop.war3assetsimporter.core.model.UnitEntry;
 import com.hiveworkshop.war3assetsimporter.core.util.CameraBounds;
 import com.hiveworkshop.war3assetsimporter.core.util.StringUtils;
 import net.moonlightflower.wc3libs.bin.Wc3BinInputStream;
 import net.moonlightflower.wc3libs.bin.app.DOO_UNITS;
+import net.moonlightflower.wc3libs.bin.app.IMP;
 import net.moonlightflower.wc3libs.bin.app.W3I;
 import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords3DF;
@@ -223,6 +225,56 @@ public class MapMetadataService {
             LOG.log(Level.WARNING, "Could not load unit definitions from map: " + mapFile.getName(), e);
         }
         LOG.fine("Loaded " + entries.size() + " unit definition(s) from " + mapFile.getName());
+        return entries;
+    }
+
+    /**
+     * Reads the import table ({@code war3map.imp}) from the map and returns a list of
+     * custom asset entries (MDX models and textures).  Each entry contains the in-MPQ
+     * path, file size (when available), and whether it is an MDX model.
+     *
+     * <p>Returns an empty list when no import table exists or parsing fails.  Never throws.
+     *
+     * @param mapFile the .w3x or .w3m map file
+     * @return list of custom assets, possibly empty; never {@code null}
+     */
+    public List<MapAssetEntry> loadExistingAssets(File mapFile) {
+        LOG.info("Loading existing assets: " + mapFile.getName());
+        List<MapAssetEntry> entries = new ArrayList<>();
+        try (JMpqEditor mpq = new JMpqEditor(mapFile, MPQOpenOption.FORCE_V0)) {
+            if (!mpq.hasFile(IMP.GAME_PATH)) return entries;
+
+            IMP imp = new IMP(new Wc3BinInputStream(
+                    new ByteArrayInputStream(mpq.extractFileAsBytes(IMP.GAME_PATH))));
+
+            for (IMP.Obj obj : imp.getObjs()) {
+                String path = obj.getPath();
+                if (path == null || path.isBlank()) continue;
+
+                String lower = path.toLowerCase();
+                boolean isMdx = lower.endsWith(".mdx");
+                boolean isTexture = lower.endsWith(".blp") || lower.endsWith(".dds")
+                        || lower.endsWith(".tga") || lower.endsWith(".png")
+                        || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                        || lower.endsWith(".bmp") || lower.endsWith(".gif");
+                if (!isMdx && !isTexture) continue;
+
+                long size = -1;
+                try {
+                    if (mpq.hasFile(path)) {
+                        byte[] data = mpq.extractFileAsBytes(path);
+                        size = data != null ? data.length : -1;
+                    }
+                } catch (Exception ignored) {
+                    // Size unavailable — leave at -1
+                }
+
+                entries.add(new MapAssetEntry(path, size, isMdx));
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Could not load existing assets from " + mapFile.getName(), e);
+        }
+        LOG.fine("Loaded " + entries.size() + " existing asset(s) from " + mapFile.getName());
         return entries;
     }
 

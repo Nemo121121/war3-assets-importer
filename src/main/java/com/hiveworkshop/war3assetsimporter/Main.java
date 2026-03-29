@@ -6,8 +6,6 @@ import com.hiveworkshop.war3assetsimporter.cli.ImportCommand;
 import com.hiveworkshop.war3assetsimporter.gui.MainFrame;
 import com.hiveworkshop.war3assetsimporter.gui.i18n.Messages;
 import com.hiveworkshop.war3assetsimporter.gui.settings.AppearanceConfig;
-import net.nikr.dds.DDSImageReaderSpi;
-
 import javax.imageio.spi.IIORegistry;
 import javax.swing.*;
 
@@ -56,6 +54,7 @@ public class Main {
         IIORegistry registry = IIORegistry.getDefaultInstance();
         registry.registerServiceProvider(new BLPReaderSpi());
         registry.registerServiceProvider(new BLPWriterSpi());
-        registry.registerServiceProvider(new DDSImageReaderSpi());
+        // DDS plugin registration disabled — net.nikr:dds dependency unavailable
+        // registry.registerServiceProvider(new DDSImageReaderSpi());
     }
 }

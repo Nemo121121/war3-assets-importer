@@ -12,9 +12,8 @@ version '1.0.0'
 // Use Java toolchain so Gradle auto-detects (or downloads) the correct JDK
 // on any OS — no need for org.gradle.java.home in gradle.properties.
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
-    }
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 application {
@@ -52,8 +51,8 @@ dependencies {
     // TGA (and other formats) support for ImageIO
     implementation 'com.twelvemonkeys.imageio:imageio-tga:3.10.1'
 
-    // DDS support for ImageIO
-    implementation 'net.nikr:dds:1.0.0'
+    // DDS support for ImageIO (maven.nikr.net unavailable — disabled until a mirror is set up)
+    // implementation 'net.nikr:dds:1.0.0'
 }
 
 shadowJar {
