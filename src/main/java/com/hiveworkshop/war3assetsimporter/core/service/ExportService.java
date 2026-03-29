@@ -110,6 +110,9 @@ public class ExportService {
             // ---- Write complete object definition data for all 7 WC3 types ----
             writeAllDefinitions(mpq, assetEntries, outputFolder, log);
 
+            // ---- Export raw Object Editor binary files (the full W3x data) ----
+            exportRawObjectFiles(mpq, outputFolder, log);
+
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Failed to open map for export", ex);
             log.accept("Error opening map: " + ex.getMessage());
@@ -254,6 +257,52 @@ public class ExportService {
     /**
      * Writes a single ObjMod.Obj as a JSON object with ALL modification fields.
      */
+    /**
+     * All WC3 Object Editor files to extract — the raw binary that contains
+     * every custom unit/item/ability/buff/upgrade/destructible/doodad definition
+     * with ALL their Object Editor settings (stats, sounds, abilities, etc.).
+     */
+    private static final String[][] RAW_OBJECT_FILES = {
+            {"war3map.w3u", "units"},           // Custom unit data
+            {"war3map.w3t", "items"},           // Custom item data
+            {"war3map.w3b", "destructibles"},   // Custom destructible data
+            {"war3map.w3d", "doodads"},         // Custom doodad data
+            {"war3map.w3a", "abilities"},        // Custom ability data
+            {"war3map.w3h", "buffs_effects"},    // Custom buff/effect data
+            {"war3map.w3q", "upgrades"},         // Custom upgrade data
+    };
+
+    /**
+     * Extracts the raw Object Editor binary files (war3map.w3u, .w3t, .w3b, etc.)
+     * from the MPQ and saves them into an {@code object_data/} subfolder.
+     * These files contain ALL custom object settings (stats, sounds, abilities,
+     * pathing, everything in the Object Editor) and can be merged back on import.
+     */
+    private void exportRawObjectFiles(JMpqEditor mpq, File outputFolder, Consumer<String> log) {
+        Path objectDataDir = outputFolder.toPath().resolve("object_data");
+        int count = 0;
+        for (String[] entry : RAW_OBJECT_FILES) {
+            String mpqName = entry[0];
+            try {
+                if (!mpq.hasFile(mpqName)) continue;
+                byte[] data = mpq.extractFileAsBytes(mpqName);
+                if (data == null || data.length == 0) continue;
+
+                Files.createDirectories(objectDataDir);
+                Path dest = objectDataDir.resolve(mpqName);
+                Files.write(dest, data);
+                count++;
+                log.accept("Exported object data: " + mpqName + " (" + data.length + " bytes)");
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Could not export " + mpqName, e);
+                log.accept("Warning: could not export " + mpqName + ": " + e.getMessage());
+            }
+        }
+        if (count > 0) {
+            log.accept("Exported " + count + " Object Editor data file(s) to object_data/");
+        }
+    }
+
     private void writeObjJson(StringBuilder sb, ObjMod.Obj obj) {
         sb.append("  {\n");
         sb.append("    \"id\": \"").append(escapeJson(obj.getId().toString())).append("\",\n");
