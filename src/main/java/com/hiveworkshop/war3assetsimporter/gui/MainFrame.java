@@ -693,8 +693,8 @@ public class MainFrame {
                     "Export Assets", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        Set<String> selectedPaths = assetTreePanel.getCheckedExistingAssetPaths();
-        if (selectedPaths.isEmpty()) {
+        java.util.List<MapAssetEntry> selectedAssets = assetTreePanel.getCheckedExistingAssets();
+        if (selectedAssets.isEmpty()) {
             JOptionPane.showMessageDialog(frame,
                     "No existing map assets selected for export.\n"
                     + "Check assets under '" + Messages.get("tree.existingAssets")
@@ -715,7 +715,7 @@ public class MainFrame {
         int dot = mapName.lastIndexOf('.');
         String folderName = (dot > 0 ? mapName.substring(0, dot) : mapName) + "_assets";
         File exportDir = new File(parentDir, folderName);
-        log("Exporting " + selectedPaths.size() + " asset(s) to: " + exportDir.getAbsolutePath());
+        log("Exporting " + selectedAssets.size() + " asset(s) to: " + exportDir.getAbsolutePath());
 
         statusBar.setIndeterminate(true);
         statusBar.setString(Messages.get("status.exporting"));
@@ -724,7 +724,7 @@ public class MainFrame {
         SwingWorker<Void, String> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() {
-                exportService.exportAssets(mapFile, selectedPaths, exportDir, this::publish);
+                exportService.exportAssets(mapFile, selectedAssets, exportDir, this::publish);
                 return null;
             }
 

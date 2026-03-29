@@ -228,22 +228,22 @@ public class AssetTreePanel extends JPanel {
     }
 
     /**
-     * Returns the in-MPQ paths of all checked existing map assets (for export).
+     * Returns all checked existing map assets (with category info) for export.
      */
-    public Set<String> getCheckedExistingAssetPaths() {
-        Set<String> result = new LinkedHashSet<>();
+    public List<MapAssetEntry> getCheckedExistingAssets() {
+        List<MapAssetEntry> result = new ArrayList<>();
         JCheckBoxTreeNode root = (JCheckBoxTreeNode) treeModel.getRoot();
         for (int i = 0; i < root.getChildCount(); i++) {
             JCheckBoxTreeNode child = (JCheckBoxTreeNode) root.getChildAt(i);
             Object data = child.getUserObject();
             if (data instanceof TreeNodeData td && td.relativePath().startsWith("__existing__")) {
-                collectExistingAssetPaths(child, result);
+                collectExistingAssets(child, result);
             }
         }
         return result;
     }
 
-    private void collectExistingAssetPaths(JCheckBoxTreeNode node, Set<String> result) {
+    private void collectExistingAssets(JCheckBoxTreeNode node, List<MapAssetEntry> result) {
         if (node.isLeaf() && node.isChecked()) {
             if (!(node.getUserObject() instanceof TreeNodeData data)) return;
             if (data.isFile()) {
@@ -251,14 +251,21 @@ public class AssetTreePanel extends JPanel {
                 if (rel == null) return;
                 String prefix = "__existing__/";
                 if (rel.startsWith(prefix)) {
-                    result.add(rel.substring(prefix.length()));
+                    String mpqPath = rel.substring(prefix.length());
+                    // Find the matching MapAssetEntry to preserve category
+                    for (MapAssetEntry asset : existingMapAssets) {
+                        if (asset.path().equals(mpqPath)) {
+                            result.add(asset);
+                            break;
+                        }
+                    }
                 }
             }
             return;
         }
         for (int i = 0; i < node.getChildCount(); i++) {
             Object child = node.getChildAt(i);
-            if (child instanceof JCheckBoxTreeNode cb) collectExistingAssetPaths(cb, result);
+            if (child instanceof JCheckBoxTreeNode cb) collectExistingAssets(cb, result);
         }
     }
 
@@ -266,7 +273,7 @@ public class AssetTreePanel extends JPanel {
      * Returns true if any existing map assets are currently checked.
      */
     public boolean hasCheckedExistingAssets() {
-        return !getCheckedExistingAssetPaths().isEmpty();
+        return !getCheckedExistingAssets().isEmpty();
     }
 
     private void rebuildCategoryTreeWithExistingAssets() {
@@ -286,10 +293,6 @@ public class AssetTreePanel extends JPanel {
             return;
         }
 
-        // Build existing assets node
-        List<MapAssetEntry> mdxAssets = existingMapAssets.stream().filter(MapAssetEntry::isMdx).toList();
-        List<MapAssetEntry> texAssets = existingMapAssets.stream().filter(a -> !a.isMdx()).toList();
-
         long totalSize = existingMapAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
 
         TreeNodeData existingRootData = new TreeNodeData(
@@ -297,34 +300,37 @@ public class AssetTreePanel extends JPanel {
                 totalSize, existingMapAssets.size());
         JCheckBoxTreeNode existingRoot = new JCheckBoxTreeNode(existingRootData, false);
 
-        if (!mdxAssets.isEmpty()) {
-            long mdxSize = mdxAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
-            TreeNodeData mdxCatData = new TreeNodeData(
-                    Messages.get("tree.mdx"), false, "__existing__/mdx",
-                    mdxSize, mdxAssets.size());
-            JCheckBoxTreeNode mdxCat = new JCheckBoxTreeNode(mdxCatData, false);
-            for (MapAssetEntry asset : mdxAssets) {
-                TreeNodeData leafData = new TreeNodeData(
-                        asset.filename(), true, "__existing__/" + asset.path(),
-                        Math.max(0, asset.size()), 1);
-                mdxCat.add(new JCheckBoxTreeNode(leafData, false));
-            }
-            existingRoot.add(mdxCat);
+        // Group assets by category
+        Map<MapAssetEntry.Category, List<MapAssetEntry>> byCategory = new LinkedHashMap<>();
+        for (MapAssetEntry asset : existingMapAssets) {
+            byCategory.computeIfAbsent(asset.category(), k -> new ArrayList<>()).add(asset);
         }
 
-        if (!texAssets.isEmpty()) {
-            long texSize = texAssets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
-            TreeNodeData texCatData = new TreeNodeData(
-                    Messages.get("tree.textures"), false, "__existing__/tex",
-                    texSize, texAssets.size());
-            JCheckBoxTreeNode texCat = new JCheckBoxTreeNode(texCatData, false);
-            for (MapAssetEntry asset : texAssets) {
+        // Category display names
+        Map<MapAssetEntry.Category, String> categoryLabels = Map.of(
+                MapAssetEntry.Category.UNIT_MODEL, Messages.get("tree.units"),
+                MapAssetEntry.Category.BUILDING_MODEL, Messages.get("tree.buildings"),
+                MapAssetEntry.Category.DOODAD_MODEL, Messages.get("tree.doodads"),
+                MapAssetEntry.Category.TEXTURE, Messages.get("tree.textures"),
+                MapAssetEntry.Category.SOUND, Messages.get("tree.sounds")
+        );
+
+        for (var entry : byCategory.entrySet()) {
+            MapAssetEntry.Category cat = entry.getKey();
+            List<MapAssetEntry> assets = entry.getValue();
+            String label = categoryLabels.getOrDefault(cat, cat.folderName());
+            long catSize = assets.stream().mapToLong(a -> Math.max(0, a.size())).sum();
+            TreeNodeData catData = new TreeNodeData(
+                    label, false, "__existing__/" + cat.folderName(),
+                    catSize, assets.size());
+            JCheckBoxTreeNode catNode = new JCheckBoxTreeNode(catData, false);
+            for (MapAssetEntry asset : assets) {
                 TreeNodeData leafData = new TreeNodeData(
                         asset.filename(), true, "__existing__/" + asset.path(),
                         Math.max(0, asset.size()), 1);
-                texCat.add(new JCheckBoxTreeNode(leafData, false));
+                catNode.add(new JCheckBoxTreeNode(leafData, false));
             }
-            existingRoot.add(texCat);
+            existingRoot.add(catNode);
         }
 
         // Insert existing assets node as the first child
