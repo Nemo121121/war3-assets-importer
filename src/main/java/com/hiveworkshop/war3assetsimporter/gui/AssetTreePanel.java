@@ -245,10 +245,10 @@ public class AssetTreePanel extends JPanel {
 
     private void collectExistingAssetPaths(JCheckBoxTreeNode node, Set<String> result) {
         if (node.isLeaf() && node.isChecked()) {
-            TreeNodeData data = (TreeNodeData) node.getUserObject();
+            if (!(node.getUserObject() instanceof TreeNodeData data)) return;
             if (data.isFile()) {
-                // The mpqPath is stored in the relativePath field after the "__existing__/" prefix
                 String rel = data.relativePath();
+                if (rel == null) return;
                 String prefix = "__existing__/";
                 if (rel.startsWith(prefix)) {
                     result.add(rel.substring(prefix.length()));
