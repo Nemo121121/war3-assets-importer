@@ -13,8 +13,7 @@ import net.moonlightflower.wc3libs.bin.Wc3BinOutputStream;
 import net.moonlightflower.wc3libs.bin.app.DOO;
 import net.moonlightflower.wc3libs.bin.app.DOO_UNITS;
 import net.moonlightflower.wc3libs.bin.app.IMP;
-import net.moonlightflower.wc3libs.bin.app.objMod.W3D;
-import net.moonlightflower.wc3libs.bin.app.objMod.W3U;
+import net.moonlightflower.wc3libs.bin.app.objMod.*;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords2DF;
 import net.moonlightflower.wc3libs.dataTypes.app.Coords3DF;
 import net.moonlightflower.wc3libs.dataTypes.app.War3Real;
@@ -721,6 +720,11 @@ public class ImportService {
             updateWarcraft3Script(mpq, scriptPlacements, log);
         }
 
+        // ---- Merge raw Object Editor files from object_data/ folder (if present) ----
+        // This imports ALL custom object settings (stats, sounds, abilities, etc.)
+        // from a previous export into the target map.
+        mergeObjectData(mpq, rootFolder, w3u, w3d, log);
+
         // Write all modified structures back to MPQ
         mpq.deleteFile(IMP.GAME_PATH);
         mpq.deleteFile("war3map.w3u");
@@ -749,6 +753,148 @@ public class ImportService {
             mpq.deleteFile(DOO.GAME_PATH.getName());
             mpq.insertByteArray(DOO.GAME_PATH.getName(), serializeDoo(doo));
             log.accept("Wrote " + doo.getDoods().size() + " doodad placement(s) to war3map.doo.");
+        }
+    }
+
+    /**
+     * Checks for an {@code object_data/} subfolder in the assets root folder.
+     * If found, merges all Object Editor files (W3T, W3B, W3A, W3H, W3Q) from the
+     * exported data into the output map's MPQ.  W3U and W3D are handled separately
+     * since they're already loaded as in-memory objects — their exported data is
+     * merged into the existing objects instead.
+     *
+     * <p>For W3U/W3D: objects from the exported file are merged into the already-loaded
+     * instances (adding any objects not already present by ID).
+     *
+     * <p>For W3T/W3B/W3A/W3H/W3Q: the exported file's objects are merged into whatever
+     * the map already has, and the result is written back to the MPQ.
+     */
+    private void mergeObjectData(JMpqEditor mpq, File rootFolder,
+                                 W3U w3u, W3D w3d, Consumer<String> log) {
+        File objectDataDir = new File(rootFolder, "object_data");
+        if (!objectDataDir.isDirectory()) return;
+
+        log.accept("Found object_data/ folder — merging Object Editor data...");
+
+        // W3U: merge into the in-memory instance
+        mergeIntoObjMod(objectDataDir, "war3map.w3u", W3U.class, w3u, log);
+
+        // W3D: merge into the in-memory instance
+        mergeIntoObjMod(objectDataDir, "war3map.w3d", W3D.class, w3d, log);
+
+        // W3T, W3B, W3A, W3H, W3Q: load from map + merge from file + write back
+        mergeObjFileIntoMpq(mpq, objectDataDir, "war3map.w3t", W3T.class, log);
+        mergeObjFileIntoMpq(mpq, objectDataDir, "war3map.w3b", W3B.class, log);
+        mergeObjFileIntoMpq(mpq, objectDataDir, "war3map.w3a", W3A.class, log);
+        mergeObjFileIntoMpq(mpq, objectDataDir, "war3map.w3h", W3H.class, log);
+        mergeObjFileIntoMpq(mpq, objectDataDir, "war3map.w3q", W3Q.class, log);
+    }
+
+    /**
+     * Merges objects from an exported W3x file into an already-loaded ObjMod instance.
+     * Objects are matched by custom ID — if the ID doesn't exist yet, the object's
+     * fields are copied into a new entry.
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends ObjMod<?>> void mergeIntoObjMod(
+            File objectDataDir, String fileName, Class<T> cls,
+            ObjMod<?> target, Consumer<String> log) {
+        File srcFile = new File(objectDataDir, fileName);
+        if (!srcFile.exists()) return;
+
+        try {
+            byte[] data = Files.readAllBytes(srcFile.toPath());
+            ObjMod<?> source = cls.getConstructor(Wc3BinInputStream.class)
+                    .newInstance(new Wc3BinInputStream(new ByteArrayInputStream(data)));
+
+            Set<String> existingIds = new HashSet<>();
+            for (ObjMod.Obj obj : target.getObjsList()) {
+                existingIds.add(obj.getId().toString());
+            }
+
+            int merged = 0;
+            for (ObjMod.Obj srcObj : source.getObjsList()) {
+                String id = srcObj.getId().toString();
+                if (existingIds.contains(id)) continue;
+
+                // Add the object with its base ID, then copy all mods
+                ObjMod.Obj newObj = target.addObj(srcObj.getId(), srcObj.getBaseId());
+                for (ObjMod.Obj.Mod mod : srcObj.getMods()) {
+                    newObj.set(mod.getId(), mod.getVal());
+                }
+                existingIds.add(id);
+                merged++;
+            }
+
+            if (merged > 0) {
+                log.accept("Merged " + merged + " object(s) from " + fileName);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Could not merge " + fileName, e);
+            log.accept("Warning: could not merge " + fileName + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Merges objects from an exported W3x file into the map's MPQ.
+     * Loads the existing file from the MPQ, merges new objects from the export,
+     * and writes the combined result back.
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends ObjMod<?>> void mergeObjFileIntoMpq(
+            JMpqEditor mpq, File objectDataDir, String fileName,
+            Class<T> cls, Consumer<String> log) {
+        File srcFile = new File(objectDataDir, fileName);
+        if (!srcFile.exists()) return;
+
+        try {
+            // Load source (from exported folder)
+            byte[] srcData = Files.readAllBytes(srcFile.toPath());
+            ObjMod<?> source = cls.getConstructor(Wc3BinInputStream.class)
+                    .newInstance(new Wc3BinInputStream(new ByteArrayInputStream(srcData)));
+
+            if (source.getObjsList().isEmpty()) return;
+
+            // Load target (from map MPQ, or create empty)
+            ObjMod<?> target;
+            if (mpq.hasFile(fileName)) {
+                target = cls.getConstructor(Wc3BinInputStream.class)
+                        .newInstance(new Wc3BinInputStream(
+                                new ByteArrayInputStream(mpq.extractFileAsBytes(fileName))));
+            } else {
+                target = cls.getConstructor().newInstance();
+            }
+
+            Set<String> existingIds = new HashSet<>();
+            for (ObjMod.Obj obj : target.getObjsList()) {
+                existingIds.add(obj.getId().toString());
+            }
+
+            int merged = 0;
+            for (ObjMod.Obj srcObj : source.getObjsList()) {
+                String id = srcObj.getId().toString();
+                if (existingIds.contains(id)) continue;
+
+                ObjMod.Obj newObj = target.addObj(srcObj.getId(), srcObj.getBaseId());
+                for (ObjMod.Obj.Mod mod : srcObj.getMods()) {
+                    newObj.set(mod.getId(), mod.getVal());
+                }
+                existingIds.add(id);
+                merged++;
+            }
+
+            if (merged > 0) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                try (Wc3BinOutputStream out = new Wc3BinOutputStream(baos)) {
+                    target.write(out);
+                }
+                mpq.deleteFile(fileName);
+                mpq.insertByteArray(fileName, baos.toByteArray());
+                log.accept("Merged " + merged + " object(s) into " + fileName);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Could not merge " + fileName + " into map", e);
+            log.accept("Warning: could not merge " + fileName + ": " + e.getMessage());
         }
     }
 
