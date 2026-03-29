@@ -236,7 +236,7 @@ public class AssetTreePanel extends JPanel {
         for (int i = 0; i < root.getChildCount(); i++) {
             JCheckBoxTreeNode child = (JCheckBoxTreeNode) root.getChildAt(i);
             Object data = child.getUserObject();
-            if (data instanceof TreeNodeData td && td.relativePath().startsWith("__existing__/")) {
+            if (data instanceof TreeNodeData td && td.relativePath().startsWith("__existing__")) {
                 collectExistingAssetPaths(child, result);
             }
         }
